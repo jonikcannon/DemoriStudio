@@ -1,0 +1,183 @@
+<header class="nav">
+  <a class="brand" (click)="activeSection = 'home'; menuOpen = false"><span>DE</span>MORI <i>STUDIO</i></a>
+  <nav [class.open]="menuOpen">
+    <a [class.active]="activeSection === 'products'" (click)="activeSection = 'products'; menuOpen = false">Catalog</a>
+    <a [class.active]="activeSection === 'services'" (click)="activeSection = 'services'; menuOpen = false">Services</a>
+    <a [class.active]="activeSection === 'about'" (click)="activeSection = 'about'; menuOpen = false">About</a>
+  </nav>
+  <button class="admin-quick" type="button" (click)="adminOpen ? closeAdmin() : openAdmin()">{{ adminToken ? 'Manage products' : 'Admin login' }}</button>
+  <button class="cart-quick" type="button" (click)="openCartView()">Cart <span>{{ activeCartCount }}</span></button>
+  <button class="hamburger" (click)="menuOpen = !menuOpen">☰</button>
+</header>
+
+<main id="top">
+  <section class="hero" *ngIf="activeSection === 'home'">
+    <div class="hero-copy"><p class="eyebrow">PHOTOGRAPHY + DRONE AERIALS</p><h1>Made to make<br><em>you look twice.</em></h1><p class="intro">Thoughtful imagery for the places, people, and stories worth remembering.</p><button class="underlined" (click)="activeSection = 'products'">Explore the catalog <span>↓</span></button></div>
+    <div class="hero-image"><video src="assets/media/dji_fly_20260709_091900_0026_1783650454489_slowmotion.mp4" autoplay muted loop playsinline aria-label="Aerial drone footage"></video><div class="hero-stamp">EST. 2014<br><b>✦</b><br>NEW YORK · BEYOND</div></div>
+  </section>
+
+  <section class="statement" *ngIf="activeSection === 'home'"><p class="eyebrow">A DIFFERENT PERSPECTIVE</p><h2>Images with a sense<br>of <em>place</em> and feeling.</h2><div class="statement-note">From the ground to the sky, we make photographs that feel both immediate and lasting.<span>↘</span></div></section>
+
+  <section class="catalog-controls" *ngIf="activeSection === 'products'">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">CATALOG</p>
+        <h2>Shop by category</h2>
+      </div>
+      <p class="service-lede">Browse a category and purchase from the items listed below.</p>
+    </div>
+    <div class="gallery-tabs">
+      <button *ngFor="let category of catalogCategories; trackBy: trackByCategory"
+              [class.active]="activeGallery === category"
+              (click)="changeGalleryCategory(category)">
+        {{ category }}
+      </button>
+    </div>
+  </section>
+
+  <app-products
+    *ngIf="activeSection === 'products'"
+    [products]="visibleProducts"
+    [categoryOptions]="editableCategoryOptions"
+    [loading]="productsLoading"
+    [canManage]="canManageProducts"
+    (buy)="buyProduct($event)"
+    (buyPrint)="buyPrintProduct($event)"
+    (mediaPreview)="openProductMedia($event)"
+    (saveProduct)="onSaveProductEdits($event)"
+    (deleteProduct)="onDeleteProduct($event)"
+    (publishProduct)="onPublishProduct($event)"></app-products>
+
+  <div class="media-viewer-backdrop" *ngIf="isMediaViewerOpen && selectedMedia" (click)="closeMediaViewer()">
+    <div class="media-viewer" (click)="$event.stopPropagation()">
+      <button class="media-viewer-close" type="button" (click)="closeMediaViewer()" aria-label="Close media viewer">×</button>
+      <button class="media-viewer-nav media-viewer-nav-left" type="button" (click)="showPreviousMedia()" aria-label="View previous media">‹</button>
+      <button class="media-viewer-nav media-viewer-nav-right" type="button" (click)="showNextMedia()" aria-label="View next media">›</button>
+      <img *ngIf="selectedMedia.mediaType === 'image'" [src]="selectedMedia.image" [alt]="selectedMedia.title">
+      <video #viewerVideo *ngIf="selectedMedia.mediaType === 'video'" [src]="selectedMedia.image" controls autoplay playsinline preload="metadata" [attr.aria-label]="selectedMedia.title" (play)="onViewerVideoPlay()" (pause)="onViewerVideoPause()"></video>
+      <div class="media-viewer-controls" *ngIf="selectedMedia.mediaType === 'video'">
+        <button type="button" class="media-viewer-play" (click)="toggleViewerPlayback()">{{ viewerVideoPlaying ? 'Pause' : 'Play' }}</button>
+      </div>
+      <div class="media-viewer-caption">
+        <p class="eyebrow">{{ selectedMedia.category }}</p>
+        <h3>{{ selectedMedia.title }}</h3>
+      </div>
+    </div>
+  </div>
+
+  <app-services 
+    *ngIf="activeSection === 'services'"
+    [services]="services" 
+    [activeService]="activeService"
+    (serviceChange)="activeService = $event"
+    (contactClick)="activeSection = 'contact'"></app-services>
+
+  <app-about *ngIf="activeSection === 'about'" (contactClick)="activeSection = 'contact'"></app-about>
+
+  <section id="contact" class="contact" *ngIf="activeSection === 'contact'"><p class="eyebrow">LET'S MAKE SOMETHING</p><h2>Have a story in mind?<br><em>Let's talk.</em></h2><a href="mailto:hello@demori.studio" class="contact-link">hello&#64;demori.studio <span>↗</span></a></section>
+</main>
+
+<div class="cart-drawer-backdrop" *ngIf="isCartOpen" (click)="closeCartView()">
+  <aside class="cart-drawer" (click)="$event.stopPropagation()" role="dialog" aria-modal="true" aria-label="Shopping cart">
+    <div class="cart-drawer-head">
+      <h3>Your cart</h3>
+      <button type="button" (click)="closeCartView()" aria-label="Close cart">×</button>
+    </div>
+    <app-cart
+      [cartItems]="activeCartItems"
+      [activeCartCount]="activeCartCount"
+      [cartTotal]="cartTotal"
+      [cartCheckingOut]="cartCheckingOut"
+      [hasDigitalItems]="hasDigitalItemsInCart"
+      [digitalDeliveryEmail]="digitalDeliveryEmail"
+      [deliveryUpdatesOptIn]="deliveryUpdatesOptIn"
+      [cartFormError]="cartFormError"
+      (removeItem)="removeFromCart($event)"
+      (updateQuantity)="updateCartQuantity($event.cartItemId, $event.quantity)"
+      (deliveryEmailChange)="onDigitalDeliveryEmailChange($event)"
+      (deliveryUpdatesOptInChange)="onDeliveryUpdatesOptInChange($event)"
+      (checkout)="checkoutCart()"></app-cart>
+  </aside>
+</div>
+
+<div class="admin-modal-backdrop" *ngIf="adminOpen" (click)="closeAdmin()">
+  <aside class="admin-modal" (click)="$event.stopPropagation()" role="dialog" aria-modal="true" aria-label="Admin studio">
+    <div class="admin-modal-head">
+      <h3>{{ adminToken ? 'Manage products' : 'Admin login' }}</h3>
+      <button type="button" (click)="closeAdmin()" aria-label="Close admin panel">×</button>
+    </div>
+
+    <div *ngIf="!adminToken" class="login-card admin-login-card">
+      <p>Sign in to manage products and publish gallery items.</p>
+      <div id="google-signin-button" style="margin: 20px 0 0; text-align: center;"></div>
+      <p class="error" *ngIf="adminError">{{adminError}}</p>
+    </div>
+
+    <div *ngIf="adminToken" class="admin-body admin-modal-body">
+      <div class="admin-tabs" role="tablist" aria-label="Admin sections">
+        <button type="button" [class.active]="adminView === 'products'" (click)="setAdminView('products')">Products</button>
+        <button type="button" [class.active]="adminView === 'inquiries'" (click)="setAdminView('inquiries')">Inquiries <span>{{ inquiries.length }}</span></button>
+      </div>
+
+      <section class="admin-products" *ngIf="adminView === 'products'">
+        <label class="dropzone">
+          <input type="file" accept="image/*,video/*" (change)="pickMedia($event)">
+          <div *ngIf="!uploadPreview"><b>Drop an image or video here</b><span>JPG, PNG, MP4, MOV</span></div>
+          <img *ngIf="uploadPreview && uploadFile?.type?.startsWith('image')" [src]="uploadPreview" alt="Upload preview">
+          <video *ngIf="uploadPreview && uploadFile?.type?.startsWith('video')" [src]="uploadPreview" muted controls></video>
+        </label>
+        <form (ngSubmit)="publishProduct()">
+          <label>Title<input [(ngModel)]="product.title" name="title" placeholder="e.g. Driftwood Coast" required></label>
+          <div class="two-up"><label>Product type<select [(ngModel)]="product.category" name="category"><option>Print</option><option>Digital download</option><option>Stock video</option><option>Fine art</option></select></label><label>Price (USD)<input [(ngModel)]="product.price" name="price" type="number" min="1" required></label></div>
+          <label>Description <textarea [(ngModel)]="product.description" name="description" placeholder="A few details about this piece..."></textarea></label>
+          <button class="publish" type="submit" [disabled]="!uploadFile || uploading">{{ uploading ? 'Publishing…' : 'Publish to shop' }} <span>→</span></button>
+          <button type="button" class="underlined signout" (click)="logout()">Sign out</button>
+          <p class="error" *ngIf="adminError">{{adminError}}</p>
+        </form>
+      </section>
+
+      <section class="admin-inquiries" *ngIf="adminView === 'inquiries'">
+        <div class="admin-inquiries-tools">
+          <label>Search<input type="text" [(ngModel)]="inquirySearch" name="inquirySearch" placeholder="Name, email, or message"></label>
+          <label>Service<select [(ngModel)]="inquiryServiceFilter" name="inquiryServiceFilter"><option value="all">All services</option><option *ngFor="let service of inquiryServiceOptions" [value]="service">{{ service }}</option></select></label>
+          <label>Status<select [(ngModel)]="inquiryStatusFilter" name="inquiryStatusFilter"><option value="all">All statuses</option><option value="new">New</option><option value="in-progress">In progress</option><option value="closed">Closed</option></select></label>
+          <button type="button" class="underlined" (click)="loadInquiries()">Refresh <span>↻</span></button>
+          <button type="button" class="underlined signout" (click)="logout()">Sign out</button>
+        </div>
+        <p class="admin-inquiries-meta" *ngIf="!inquiriesLoading">Showing {{ filteredInquiries.length }} of {{ inquiries.length }} inquiries</p>
+        <p class="admin-inquiries-meta" *ngIf="inquiriesLoading">Loading inquiries...</p>
+        <p class="error" *ngIf="inquiriesError">{{ inquiriesError }}</p>
+
+        <div class="admin-inquiries-list" *ngIf="!inquiriesLoading && filteredInquiries.length">
+          <article class="inquiry-card" *ngFor="let inquiry of filteredInquiries; trackBy: trackByInquiry">
+            <div class="inquiry-card-head">
+              <h4>{{ inquiry.name }}</h4>
+              <p>{{ formatInquiryDate(inquiry.createdAt) }}</p>
+            </div>
+            <p class="inquiry-card-contact"><a [href]="'mailto:' + inquiry.email">{{ inquiry.email }}</a> · {{ inquiry.service }}</p>
+            <p class="inquiry-card-message">{{ inquiry.message }}</p>
+            <div class="inquiry-card-foot">
+              <label>Status<select [ngModel]="inquiry.status" (ngModelChange)="updateInquiryStatus(inquiry.id, $event)" [name]="'status-' + inquiry.id"><option value="new">New</option><option value="in-progress">In progress</option><option value="closed">Closed</option></select></label>
+              <span class="inquiry-delivery" [class.ok]="inquiry.emailDelivered">{{ inquiry.emailDelivered ? 'Email delivered' : 'Email pending/fallback' }}</span>
+            </div>
+          </article>
+        </div>
+
+        <p class="admin-inquiries-empty" *ngIf="!inquiriesLoading && !filteredInquiries.length">No inquiries match your current filters.</p>
+      </section>
+    </div>
+  </aside>
+</div>
+
+<div class="prompt-dialog-backdrop" *ngIf="promptDialogOpen" (click)="onPromptDialogCancel()">
+  <aside class="prompt-dialog" (click)="$event.stopPropagation()" role="dialog" aria-modal="true" [attr.aria-label]="promptDialogTitle || 'Prompt dialog'">
+    <h4>{{ promptDialogTitle }}</h4>
+    <p>{{ promptDialogMessage }}</p>
+    <div class="prompt-dialog-actions">
+      <button type="button" class="prompt-cancel" *ngIf="promptDialogMode === 'confirm'" (click)="onPromptDialogCancel()">Cancel</button>
+      <button type="button" class="prompt-confirm" (click)="onPromptDialogConfirm()">{{ promptDialogMode === 'confirm' ? 'Confirm' : 'OK' }}</button>
+    </div>
+  </aside>
+</div>
+
+<footer><a class="brand"><span>DE</span>MORI <i>STUDIO</i></a><p>© 2026 Demori Studio. All rights reserved.</p><div><a (click)="openAdmin()">Admin</a><a href="#">Instagram</a><a href="#">Vimeo</a></div></footer>

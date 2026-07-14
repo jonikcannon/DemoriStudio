@@ -1,0 +1,53 @@
+<section id="gallery" class="gallery">
+  <div class="section-head">
+    <div>
+      <p class="eyebrow">FROM THE ARCHIVE</p>
+      <h2>Wander with me</h2>
+    </div>
+    <p class="service-lede">Small moments, wide-open places, and the views that make you stop.</p>
+  </div>
+  <div class="gallery-tabs">
+    <button *ngFor="let category of categories; trackBy: trackByCategory" 
+            [class.active]="activeGallery === category" 
+            (click)="onCategoryChange(category)">
+      {{category}}
+    </button>
+  </div>
+  <div class="gallery-loading" *ngIf="galleryLoading">
+    <div class="spinner"></div>
+    <p>Loading gallery media…</p>
+  </div>
+  <div class="gallery-grid" *ngIf="visibleGallery.length; else emptyGallery">
+    <article *ngFor="let image of visibleGallery; trackBy: trackByGalleryItem" 
+             (click)="onMediaClick(image)" 
+             role="button" 
+             tabindex="0" 
+             (keydown.enter)="onMediaClick(image)" 
+             (keydown.space)="onMediaClick(image)">
+      <video *ngIf="image.mediaType === 'video'" 
+             [src]="image.image" 
+             muted 
+             playsinline 
+             preload="metadata" 
+             [attr.aria-label]="image.title" 
+             (loadedmetadata)="onMediaLoaded()"></video>
+      <img *ngIf="image.mediaType === 'image'" 
+           [src]="image.image" 
+           [alt]="image.title" 
+           loading="lazy" 
+           decoding="async" 
+           (load)="onMediaLoaded()">
+      <div>
+        <span>{{image.category}} <b *ngIf="image.mediaType === 'video'">· Video</b></span>
+        <h3>{{image.title}}</h3>
+      </div>
+    </article>
+  </div>
+  <div class="gallery-loading-more" *ngIf="galleryPrefetching && galleryPrefetchCount < visibleGallery.length">
+    <div class="spinner small"></div>
+    <p>Loading more…</p>
+  </div>
+  <ng-template #emptyGallery>
+    <p class="gallery-empty">Your gallery will appear here once photos or videos are added to the category folders.</p>
+  </ng-template>
+</section>

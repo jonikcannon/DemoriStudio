@@ -1,0 +1,25 @@
+<section id="work" class="portfolio">
+  <div class="section-head">
+    <div>
+      <p class="eyebrow">SELECTED WORK</p>
+      <h2>Recent stories</h2>
+    </div>
+    <button class="underlined desktop-only" (click)="onShowAllToggle()">
+      {{ showAll ? 'Show less' : 'View all work' }} <span>↗</span>
+    </button>
+  </div>
+  <div class="work-grid">
+    <article *ngFor="let item of visibleWork; trackBy: trackByWorkItem" class="work-card" [class.tall]="item.size === 'tall'">
+      <video *ngIf="item.mediaType === 'video'" [src]="item.image" muted loop autoplay playsinline></video>
+      <img *ngIf="item.mediaType !== 'video'" [src]="item.image" [alt]="item.title">
+      <div class="work-info">
+        <span>{{item.type}} <b *ngIf="item.mediaType === 'video'">· VIDEO</b></span>
+        <h3>{{item.title}}</h3>
+        <button *ngIf="item.price" class="buy" (click)="onBuy(item)">Buy · ${{item.price}}</button>
+      </div>
+    </article>
+  </div>
+  <button class="underlined mobile-only" (click)="onShowAllToggle()">
+    View all work <span>↗</span>
+  </button>
+</section>

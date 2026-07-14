@@ -1,0 +1,7 @@
+node_modules/
+.env
+dist/
+storage/sale-photos/originals/*
+!storage/sale-photos/originals/.gitkeep
+storage/sale-photos/deliveries/*
+!storage/sale-photos/deliveries/.gitkeep
