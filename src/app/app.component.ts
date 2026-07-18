@@ -194,20 +194,19 @@ export class AppComponent implements OnInit {
     {
       name: 'Portraits',
       icon: '◌',
-      title: 'Commercial video and branded content',
-      text: 'Cinematic highlight reels combining ground and aerial footage for commercial spaces and premium listings.',
-      image: 'assets/gallery/beach/20260707_183906.mp4',
-      mediaType: 'video',
-      poster: 'assets/gallery/beach/20260708_140415.jpg',
-      pricingTitle: 'Video and production strategy',
+      title: 'Outdoor portraits and personal branding',
+      text: 'Natural-light portrait sessions for professionals, creatives, and personal brands with clean direction, relaxed pacing, and polished final edits.',
+      image: 'assets/outdoor portrait.png',
+      mediaType: 'image',
+      pricingTitle: 'Portrait session pricing',
       tiers: [
-        { label: 'Highlight reel package', price: '$400 - $1,200+', details: 'Edited 60-second property or commercial showcase.' },
-        { label: 'Commercial production hourly', price: '$150 - $300 / hour', details: 'On-site filming with post-production workflow.' },
-        { label: 'Advanced campaign builds', price: 'Custom proposal', details: 'Multi-deliverable edits for social, web, and listing platforms.' }
+        { label: 'Mini session', price: '$175 - $250', details: '20-30 minute outdoor session with 8 edited images.' },
+        { label: 'Signature session', price: '$300 - $450', details: '60-minute session with multiple looks and 20 edited images.' },
+        { label: 'Branding session', price: '$500+', details: 'Extended portrait coverage for teams, entrepreneurs, and campaign use.' }
       ],
       addons: [
-        { label: 'AI twilight frames', price: '$15 / image', details: 'Cinematic evening mood add-on for key frames.' },
-        { label: '3D tour integration', price: '$100 - $200', details: 'Matterport-style scan integration and embed support.' }
+        { label: 'Additional retouched images', price: '$15 / image', details: 'Expanded final gallery beyond the included delivery count.' },
+        { label: 'Rush turnaround', price: '$75', details: '48-hour edit delivery for time-sensitive announcements or campaigns.' }
       ]
     }
   ];

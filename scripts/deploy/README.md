@@ -12,7 +12,7 @@ Quick start
 1) Push this repository to GitHub.
 2) Provision an Ubuntu VPS.
 3) Copy repo to server, then run:
-   sudo bash scripts/deploy/bootstrap-vps.sh demori.studio https://github.com/your-user/demoriPhotos.git hello@demori.studio
+   sudo bash scripts/deploy/bootstrap-vps.sh demori.studio git@github.com:jonikcannon/DemoriStudio.git hello@demori.studio
 4) Edit /var/www/demori/app/.env with real secrets.
 5) Restart API:
    pm2 restart demori-api
