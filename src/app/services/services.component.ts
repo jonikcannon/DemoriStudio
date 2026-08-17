@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, Input, Output, EventEmitter } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input, Output, EventEmitter, OnChanges, SimpleChanges, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 
@@ -25,9 +25,10 @@ export type Service = {
   templateUrl: './services.component.html',
   styleUrl: './services.component.css'
 })
-export class ServicesComponent {
+export class ServicesComponent implements OnChanges {
   @Input() services: Service[] = [];
   @Input() activeService = 'Aerial';
+  @Input() aerialVideos: string[] = [];
   @Output() serviceChange = new EventEmitter<string>();
   @Output() contactClick = new EventEmitter<void>();
   contact = { name: '', email: '', service: 'Aerial', message: '' };
@@ -35,6 +36,16 @@ export class ServicesComponent {
   formSuccess = '';
   formError = '';
   private readonly api = 'http://localhost:3000/api';
+  private aerialVideoIndex = 0;
+
+  ngOnChanges(changes: SimpleChanges) {
+    if (!changes['aerialVideos']) return;
+    if (!this.aerialVideos.length) {
+      this.aerialVideoIndex = 0;
+      return;
+    }
+    this.aerialVideoIndex %= this.aerialVideos.length;
+  }
 
   onServiceChange(serviceName: string) {
     this.serviceChange.emit(serviceName);
@@ -42,6 +53,57 @@ export class ServicesComponent {
 
   onLearnMoreClick() {
     this.contactClick.emit();
+  }
+
+  canCycleAerialVideos(service: Service) {
+    return service.name === 'Aerial' && this.aerialVideos.length > 1;
+  }
+
+  getAerialVideoPosition() {
+    return this.aerialVideoIndex + 1;
+  }
+
+  getAerialVideoTotal() {
+    return this.aerialVideos.length;
+  }
+
+  getServiceMediaSource(service: Service) {
+    if (service.name !== 'Aerial' || !this.aerialVideos.length) return service.image;
+    return this.aerialVideos[this.aerialVideoIndex];
+  }
+
+  showPreviousAerialVideo() {
+    if (this.aerialVideos.length < 2) return;
+    this.aerialVideoIndex = (this.aerialVideoIndex - 1 + this.aerialVideos.length) % this.aerialVideos.length;
+  }
+
+  showNextAerialVideo() {
+    if (this.aerialVideos.length < 2) return;
+    this.aerialVideoIndex = (this.aerialVideoIndex + 1) % this.aerialVideos.length;
+  }
+
+  @HostListener('document:keydown', ['$event'])
+  onDocumentKeydown(event: KeyboardEvent) {
+    if (!this.canCycleActiveAerialVideos()) return;
+    if (this.isTypingTarget(event.target)) return;
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      this.showPreviousAerialVideo();
+      return;
+    }
+    if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      this.showNextAerialVideo();
+    }
+  }
+
+  private canCycleActiveAerialVideos() {
+    return this.activeService === 'Aerial' && this.aerialVideos.length > 1;
+  }
+
+  private isTypingTarget(target: EventTarget | null) {
+    if (!(target instanceof HTMLElement)) return false;
+    return !!target.closest('input, textarea, select, [contenteditable="true"]');
   }
 
   async onSubmitContact() {

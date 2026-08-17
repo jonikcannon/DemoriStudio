@@ -9,8 +9,31 @@
       "sourceRoot": "src",
       "prefix": "app",
       "architect": {
-        "build": { "builder": "@angular-devkit/build-angular:application", "options": { "outputPath": "dist/demori-photos", "index": "src/index.html", "browser": "src/main.ts", "polyfills": ["zone.js"], "tsConfig": "tsconfig.app.json", "assets": ["src/assets"], "styles": ["src/styles.css"] } },
-        "serve": { "builder": "@angular-devkit/build-angular:dev-server", "configurations": { "development": { "buildTarget": "demori-photos:build" } }, "defaultConfiguration": "development" }
+        "build": {
+          "builder": "@angular-devkit/build-angular:application",
+          "options": {
+            "outputPath": "dist/demori-photos",
+            "index": "src/index.html",
+            "browser": "src/main.ts",
+            "polyfills": ["zone.js"],
+            "tsConfig": "tsconfig.app.json",
+            "assets": [
+              {
+                "glob": "**/*",
+                "input": "src/assets",
+                "output": "assets",
+                "ignore": ["gallery/**"]
+              }
+            ],
+            "styles": ["src/styles.css"]
+          }
+        },
+        "serve": {
+          "builder": "@angular-devkit/build-angular:dev-server",
+          "options": { "proxyConfig": "proxy.conf.json" },
+          "configurations": { "development": { "buildTarget": "demori-photos:build" } },
+          "defaultConfiguration": "development"
+        }
       }
     }
   },

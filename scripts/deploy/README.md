@@ -23,7 +23,14 @@ Deploy updates
 
 Notes
 - This app writes uploads, inquiries, and gallery edits to persistent paths under /var/www/demori/data.
-- Production env template lives at scripts/deploy/.env.production.template.
+- Gallery media lives at /var/www/demori/data/storage/media/<category>/ and is served
+  directly by Nginx at /assets/gallery/. It is not in git and not produced by the build,
+  so a deploy never touches it. Upload new media there with rsync/scp, then run
+  `node scripts/generate-gallery-manifest.js` (or redeploy) to refresh the manifest.
+- Older layouts (data/gallery, or media inside src/assets/gallery) are migrated
+  automatically by bootstrap-vps.sh; the old data/gallery is renamed to
+  data/gallery.migrated rather than deleted.
+- Production setup reuses the root .env.example template.
 - Ensure DNS A record for root and www point to the VPS before TLS step.
 - If your default branch is not main, edit deploy.sh accordingly.
 

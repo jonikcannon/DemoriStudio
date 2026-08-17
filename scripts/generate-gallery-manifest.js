@@ -1,9 +1,10 @@
 const fs = require('fs');
 const path = require('path');
+const { resolveMediaDir, CATEGORIES } = require('./media-dir');
 
-const galleryRoot = path.resolve(__dirname, '../src/assets/gallery');
+const galleryRoot = resolveMediaDir();
 const output = path.join(galleryRoot, 'gallery-manifest.json');
-const categories = ['nature', 'about', 'beach', 'hikes', 'aerial'];
+const categories = CATEGORIES;
 const categoryLabels = {
   about: 'Others'
 };
@@ -13,6 +14,8 @@ const videoExtensions = new Set(['.mp4']);
 const titleFromFilename = (file) => path.basename(file, path.extname(file))
   .replace(/[-_]+/g, ' ')
   .replace(/\b\w/g, (letter) => letter.toUpperCase());
+
+fs.mkdirSync(galleryRoot, { recursive: true });
 
 const gallery = categories.flatMap((folder) => {
   const categoryPath = path.join(galleryRoot, folder);

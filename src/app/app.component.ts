@@ -71,6 +71,7 @@ export class AppComponent implements OnInit {
   isMediaViewerOpen = false;
   currentMediaIndex = -1;
   viewerVideoPlaying = false;
+  aerialServiceVideos: string[] = [];
   promptDialogOpen = false;
   promptDialogTitle = '';
   promptDialogMessage = '';
@@ -346,11 +347,22 @@ export class AppComponent implements OnInit {
       const response = await fetch('assets/gallery/gallery-manifest.json', { cache: 'no-store' });
       if (!response.ok) throw new Error('Gallery manifest unavailable');
       this.gallery = await response.json() as GalleryItem[];
+      this.syncAerialServiceMedia();
     } catch { this.gallery = []; }
     this.galleryProductsReady = true;
     this.rebuildProducts();
     this.resetGalleryLoading();
     this.queueGalleryPrefetch();
+  }
+  private syncAerialServiceMedia() {
+    this.aerialServiceVideos = this.gallery
+      .filter(item => item.category === 'Aerial' && item.mediaType === 'video')
+      .map(item => item.image);
+    if (!this.aerialServiceVideos.length) return;
+    const aerialService = this.services.find(service => service.name === 'Aerial');
+    if (!aerialService) return;
+    aerialService.mediaType = 'video';
+    aerialService.image = this.aerialServiceVideos[0];
   }
   private getVisibleGalleryItems() { return this.activeGallery === 'All' ? this.gallery : this.gallery.filter(item => item.category === this.activeGallery); }
   private slugify(value: string): string {

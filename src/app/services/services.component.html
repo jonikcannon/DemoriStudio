@@ -44,7 +44,12 @@
     </div>
     <div class="service-media">
       <img *ngIf="service.mediaType !== 'video'" [src]="service.image" [alt]="service.title">
-      <video *ngIf="service.mediaType === 'video'" [src]="service.image" [poster]="service.poster || null" autoplay muted loop playsinline preload="metadata" [attr.aria-label]="service.title"></video>
+      <video *ngIf="service.mediaType === 'video'" [src]="getServiceMediaSource(service)" [poster]="service.poster || null" autoplay muted loop playsinline preload="metadata" [attr.aria-label]="service.title"></video>
+      <div class="service-media-cycle" *ngIf="canCycleAerialVideos(service)">
+        <button type="button" class="service-media-nav" (click)="showPreviousAerialVideo()" aria-label="Previous aerial video">‹</button>
+        <p>{{ getAerialVideoPosition() }} / {{ getAerialVideoTotal() }}</p>
+        <button type="button" class="service-media-nav" (click)="showNextAerialVideo()" aria-label="Next aerial video">›</button>
+      </div>
     </div>
   </div>
 

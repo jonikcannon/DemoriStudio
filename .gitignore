@@ -1,7 +1,25 @@
 node_modules/
 .env
 dist/
+.angular/cache/
 storage/sale-photos/originals/*
 !storage/sale-photos/originals/.gitkeep
 storage/sale-photos/deliveries/*
 !storage/sale-photos/deliveries/.gitkeep
+
+# Gallery media lives on disk / object storage, never in git.
+# Category folders under storage/media are the source of truth for gallery categories.
+storage/media/*
+!storage/media/README.md
+storage/quarantine/
+storage/uploads/*
+!storage/uploads/.gitignore
+
+# Runtime state written by the API, persisted per-environment under data/.
+storage/products/
+storage/inquiries/
+
+# Local credentials
+.oauth-token.json
+client_secret_*.json
+demoristudios-*.json

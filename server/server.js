@@ -11,6 +11,7 @@ const nodemailer = require('nodemailer');
 const { randomUUID } = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const { Readable } = require('stream');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -22,12 +23,191 @@ if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
 const inquiriesDir = path.join(__dirname, '../storage/inquiries');
 if (!fs.existsSync(inquiriesDir)) fs.mkdirSync(inquiriesDir, { recursive: true });
-const galleryDir = path.join(__dirname, '../src/assets/gallery');
+const productsDir = path.join(__dirname, '../storage/products');
+if (!fs.existsSync(productsDir)) fs.mkdirSync(productsDir, { recursive: true });
+const { resolveMediaDir } = require('../scripts/media-dir');
+const galleryDir = resolveMediaDir();
+if (!fs.existsSync(galleryDir)) fs.mkdirSync(galleryDir, { recursive: true });
 const galleryManifestPath = path.join(galleryDir, 'gallery-manifest.json');
 
 const inquiriesLogFile = path.join(inquiriesDir, 'contact-inquiries.jsonl');
+const productsFile = path.join(productsDir, 'products.json');
 let products = [];
 let mailTransporter;
+let mediaStorageReady = false;
+
+const googleMediaConfig = {
+  folderId: String(process.env.GOOGLE_MEDIA_FOLDER_ID || process.env.GOOGLE_DRIVE_FOLDER_ID || '').trim(),
+  serviceAccountJson: String(process.env.GOOGLE_SERVICE_ACCOUNT_JSON || '').trim(),
+  tokenTtl: String(process.env.GOOGLE_MEDIA_TOKEN_TTL || '12h').trim() || '12h'
+};
+
+function getGoogleServiceAccountCredentials() {
+  if (!googleMediaConfig.serviceAccountJson) return null;
+  try {
+    return JSON.parse(googleMediaConfig.serviceAccountJson);
+  } catch (error) {
+    console.error('GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON.', error.message || error);
+    return null;
+  }
+}
+
+function createGoogleDriveClient() {
+  if (!googleMediaConfig.folderId) return null;
+  const credentials = getGoogleServiceAccountCredentials();
+  if (!credentials?.client_email || !credentials?.private_key) return null;
+
+  const auth = new google.auth.JWT({
+    email: credentials.client_email,
+    key: credentials.private_key,
+    scopes: ['https://www.googleapis.com/auth/drive']
+  });
+
+  return google.drive({ version: 'v3', auth });
+}
+
+const driveClient = createGoogleDriveClient();
+
+function canUseGoogleDriveMedia() {
+  return Boolean(driveClient && googleMediaConfig.folderId);
+}
+
+function buildMediaProxyPath(fileId, mimeType) {
+  const token = jwt.sign({
+    provider: 'gdrive',
+    fileId,
+    mimeType: String(mimeType || '').trim()
+  }, process.env.JWT_SECRET, {
+    expiresIn: googleMediaConfig.tokenTtl,
+    issuer: 'demori-api',
+    audience: 'demori-media'
+  });
+  return `/api/media/${encodeURIComponent(token)}`;
+}
+
+function resolveProductImageForResponse(product) {
+  const normalized = ensureSku(product);
+  if (normalized?.storageProvider === 'gdrive' && normalized?.driveFileId) {
+    return {
+      ...normalized,
+      image: buildMediaProxyPath(normalized.driveFileId, normalized.driveMimeType || normalized.mediaMimeType || '')
+    };
+  }
+  return normalized;
+}
+
+function readProductsFromDisk() {
+  if (!fs.existsSync(productsFile)) return [];
+  try {
+    const raw = fs.readFileSync(productsFile, 'utf8');
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.error('Failed to read persisted products file:', error.message || error);
+    return [];
+  }
+}
+
+function writeProductsToDisk() {
+  try {
+    fs.writeFileSync(productsFile, `${JSON.stringify(products, null, 2)}\n`, 'utf8');
+    return true;
+  } catch (error) {
+    console.error('Failed to persist products file:', error.message || error);
+    return false;
+  }
+}
+
+function loadProductsFromDisk() {
+  const loaded = readProductsFromDisk();
+  products = loaded.map(ensureSku);
+  if (!fs.existsSync(productsFile)) {
+    writeProductsToDisk();
+  }
+}
+
+async function initializeMediaStorage() {
+  if (canUseGoogleDriveMedia()) {
+    try {
+      await driveClient.files.get({
+        fileId: googleMediaConfig.folderId,
+        fields: 'id',
+        supportsAllDrives: true
+      });
+      mediaStorageReady = true;
+      console.log(`Media storage: Google Drive mode (${googleMediaConfig.folderId})`);
+      return;
+    } catch (error) {
+      console.error('Google Drive media folder check failed. Falling back to local filesystem mode.', error.message || error);
+    }
+  }
+
+  mediaStorageReady = true;
+  console.log('Media storage: local filesystem mode');
+}
+
+async function saveProductMedia({ fileName, mimeType, buffer }) {
+  if (canUseGoogleDriveMedia()) {
+    try {
+      const uploaded = await driveClient.files.create({
+        requestBody: {
+          name: fileName,
+          parents: [googleMediaConfig.folderId]
+        },
+        media: {
+          mimeType: mimeType || 'application/octet-stream',
+          body: Readable.from(buffer)
+        },
+        fields: 'id, name',
+        supportsAllDrives: true
+      });
+
+      return {
+        image: buildMediaProxyPath(uploaded.data.id, mimeType),
+        fileName,
+        driveFileId: uploaded.data.id,
+        driveMimeType: mimeType || 'application/octet-stream',
+        storageProvider: 'gdrive'
+      };
+    } catch (error) {
+      console.error('Google Drive media upload failed. Falling back to local upload path.', error.message || error);
+    }
+  }
+
+  const filePath = path.join(uploadsDir, fileName);
+  fs.writeFileSync(filePath, buffer);
+  return {
+    image: `/uploads/${fileName}`,
+    fileName,
+    storageProvider: 'local'
+  };
+}
+
+async function removeProductMedia(product) {
+  if (product?.storageProvider === 'gdrive' && product?.driveFileId && driveClient) {
+    try {
+      await driveClient.files.delete({
+        fileId: String(product.driveFileId),
+        supportsAllDrives: true
+      });
+      return;
+    } catch (error) {
+      console.error('Failed to remove Google Drive media object:', error.message || error);
+      return;
+    }
+  }
+
+  if (product?.fileName) {
+    const filePath = path.join(uploadsDir, product.fileName);
+    if (fs.existsSync(filePath)) {
+      try {
+        fs.unlinkSync(filePath);
+      } catch (error) {
+        console.error('Failed to remove uploaded product media:', error);
+      }
+    }
+  }
+}
 
 function slugify(value) {
   return String(value || '')
@@ -106,6 +286,8 @@ function buildCheckoutDescription(product) {
 }
 
 function buildCheckoutLineItem(product, quantity) {
+  const normalizedImage = String(product?.image || '').trim();
+  const canUseStripeImage = normalizedImage && !normalizedImage.startsWith('/api/media/') && !normalizedImage.startsWith('api/media/');
   return {
     quantity,
     price_data: {
@@ -114,7 +296,7 @@ function buildCheckoutLineItem(product, quantity) {
       product_data: {
         name: product.title,
         description: buildCheckoutDescription(product),
-        images: product.mediaType === 'image' ? [toAbsoluteImage(product.image)] : []
+        images: product.mediaType === 'image' && canUseStripeImage ? [toAbsoluteImage(product.image)] : []
       }
     }
   };
@@ -132,8 +314,10 @@ function resolvePreviewProduct(preview) {
   const normalizedOrigin = origin.replace(/\/$/, '');
   const isGalleryImage = image.startsWith('assets/gallery/');
   const isUploadImage = image.startsWith('/uploads/') || image.startsWith('uploads/');
+  const isProxyImage = image.startsWith('/api/media/') || image.startsWith('api/media/');
   const isOriginImage = image.startsWith(`${normalizedOrigin}/`);
-  if (!isGalleryImage && !isUploadImage && !isOriginImage) return null;
+  const isAbsoluteRemote = /^https?:\/\//i.test(image);
+  if (!isGalleryImage && !isUploadImage && !isProxyImage && !isOriginImage && !isAbsoluteRemote) return null;
 
   return {
     sku,
@@ -251,7 +435,13 @@ async function sendInquiryEmail(inquiry) {
 
 app.use(helmet());
 app.use(cors({ origin, methods: ['GET', 'POST', 'PATCH', 'DELETE'], allowedHeaders: ['Content-Type', 'Authorization'] }));
-app.use(express.static(path.join(__dirname, '../storage')));
+// Only these two subtrees of storage/ are public. Mount them explicitly rather
+// than serving all of storage/, which would also expose inquiries (PII),
+// products.json, and sale-photos originals.
+// In production nginx serves both paths directly; these mounts are the dev-mode
+// and direct-hit equivalent.
+app.use('/uploads', express.static(uploadsDir, { maxAge: '7d' }));
+app.use('/assets/gallery', express.static(galleryDir, { maxAge: '7d' }));
 
 app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), stripeWebhook);
 app.use(express.json({ limit: '65mb' }));
@@ -270,7 +460,7 @@ function auth(req, res, next) {
 }
 
 app.get('/api/products', (req, res) => {
-  res.json(products.filter(product => product.published).map(ensureSku));
+  res.json(products.filter(product => product.published).map(resolveProductImageForResponse));
 });
 
 app.post('/api/admin/login', rateLimit({ windowMs: 900000, max: 8, message: { error: 'Too many attempts. Try again later.' } }), async (req, res) => {
@@ -374,8 +564,11 @@ app.post('/api/admin/products', auth, async (req, res) => {
   try {
     const fileExt = path.extname(media.name);
     const fileName = `${randomUUID()}${fileExt}`;
-    const filePath = path.join(uploadsDir, fileName);
-    fs.writeFileSync(filePath, Buffer.from(media.data, 'base64'));
+    const upload = await saveProductMedia({
+      fileName,
+      mimeType: media.mimeType,
+      buffer: Buffer.from(media.data, 'base64')
+    });
 
     const product = ensureSku({
       id: randomUUID(),
@@ -384,14 +577,21 @@ app.post('/api/admin/products', auth, async (req, res) => {
       price,
       description: description || '',
       mediaType: media.mimeType.startsWith('video/') ? 'video' : 'image',
-      fileName,
-      image: `/uploads/${fileName}`,
+      mediaMimeType: media.mimeType,
+      fileName: upload.fileName,
+      driveFileId: upload.driveFileId,
+      driveMimeType: upload.driveMimeType,
+      storageProvider: upload.storageProvider,
+      image: upload.image,
       published: true,
       createdAt: new Date().toISOString()
     });
 
     products.unshift(product);
-    return res.status(201).json(product);
+    if (!writeProductsToDisk()) {
+      return res.status(500).json({ error: 'Media uploaded but product could not be saved.' });
+    }
+    return res.status(201).json(resolveProductImageForResponse(product));
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: 'Media upload failed.' });
@@ -426,10 +626,13 @@ app.post('/api/admin/products/from-gallery', auth, (req, res) => {
   });
 
   products.unshift(product);
-  return res.status(201).json(product);
+  if (!writeProductsToDisk()) {
+    return res.status(500).json({ error: 'Product was created but could not be saved.' });
+  }
+  return res.status(201).json(resolveProductImageForResponse(product));
 });
 
-app.delete('/api/admin/products/:id', auth, (req, res) => {
+app.delete('/api/admin/products/:id', auth, async (req, res) => {
   const id = String(req.params.id || '').trim();
   if (!id) return res.status(400).json({ error: 'Product id is required.' });
 
@@ -438,15 +641,9 @@ app.delete('/api/admin/products/:id', auth, (req, res) => {
 
   products = products.filter(item => item.id !== id);
 
-  if (product.fileName) {
-    const filePath = path.join(uploadsDir, product.fileName);
-    if (fs.existsSync(filePath)) {
-      try {
-        fs.unlinkSync(filePath);
-      } catch (error) {
-        console.error('Failed to remove uploaded product media:', error);
-      }
-    }
+  await removeProductMedia(product);
+  if (!writeProductsToDisk()) {
+    return res.status(500).json({ error: 'Product removed from memory but could not be saved.' });
   }
 
   return res.json({ ok: true, id });
@@ -499,6 +696,9 @@ app.patch('/api/admin/gallery/category', auth, (req, res) => {
       image: toAbsoluteImage(nextImage)
     };
   });
+  if (!writeProductsToDisk()) {
+    return res.status(500).json({ error: 'Gallery update saved in memory but failed to persist.' });
+  }
 
   if (fs.existsSync(galleryManifestPath)) {
     try {
@@ -663,6 +863,48 @@ app.post('/api/checkout/cart', async (req, res) => {
   res.json({ url: session.url });
 });
 
+app.get('/api/media/:token', async (req, res) => {
+  if (!driveClient) return res.status(404).json({ error: 'Media proxy unavailable.' });
+
+  try {
+    const decoded = jwt.verify(String(req.params.token || ''), process.env.JWT_SECRET, {
+      issuer: 'demori-api',
+      audience: 'demori-media'
+    });
+
+    if (decoded?.provider !== 'gdrive' || !decoded?.fileId) {
+      return res.status(400).json({ error: 'Invalid media token.' });
+    }
+
+    const mimeType = String(decoded?.mimeType || '').trim();
+    if (mimeType) {
+      res.setHeader('Content-Type', mimeType);
+    }
+    res.setHeader('Cache-Control', 'private, max-age=300');
+
+    const response = await driveClient.files.get({
+      fileId: String(decoded.fileId),
+      alt: 'media',
+      supportsAllDrives: true
+    }, {
+      responseType: 'stream'
+    });
+
+    response.data.on('error', (error) => {
+      console.error('Drive media stream failed:', error.message || error);
+      if (!res.headersSent) res.status(502).end();
+    });
+
+    response.data.pipe(res);
+  } catch (error) {
+    if (error?.name === 'TokenExpiredError' || error?.name === 'JsonWebTokenError') {
+      return res.status(401).json({ error: 'Media token expired or invalid.' });
+    }
+    console.error('Media proxy error:', error.message || error);
+    return res.status(404).json({ error: 'Media unavailable.' });
+  }
+});
+
 async function stripeWebhook(req, res) {
   if (!stripe || !process.env.STRIPE_WEBHOOK_SECRET) return res.sendStatus(400);
 
@@ -684,4 +926,13 @@ async function stripeWebhook(req, res) {
   return res.json({ received: true });
 }
 
-app.listen(port, () => console.log(`Demori API running on http://localhost:${port}`));
+initializeMediaStorage()
+  .then(() => {
+    loadProductsFromDisk();
+    console.log(`Products loaded: ${products.length}`);
+    app.listen(port, () => console.log(`Demori API running on http://localhost:${port}`));
+  })
+  .catch((error) => {
+    console.error('Failed to initialize media storage.', error);
+    process.exit(1);
+  });

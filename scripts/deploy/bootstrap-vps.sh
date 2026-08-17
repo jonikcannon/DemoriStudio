@@ -48,7 +48,7 @@ echo "==> Creating app folders"
 mkdir -p "${APP_ROOT}"
 chown -R "${APP_USER}:${APP_USER}" "${APP_ROOT}"
 
-su - "${APP_USER}" -c "mkdir -p '${APP_DIR}' '${DATA_DIR}/storage/uploads' '${DATA_DIR}/storage/inquiries' '${DATA_DIR}/gallery'"
+su - "${APP_USER}" -c "mkdir -p '${APP_DIR}' '${DATA_DIR}/storage/uploads' '${DATA_DIR}/storage/inquiries' '${DATA_DIR}/storage/media'"
 su - "${APP_USER}" -c "mkdir -p '${APP_DIR}/logs'"
 
 if [[ ! -d "${APP_DIR}/.git" ]]; then
@@ -69,17 +69,24 @@ if [[ -d "${APP_DIR}/storage" && ! -L "${APP_DIR}/storage" ]]; then
 fi
 ln -sfn "${DATA_DIR}/storage" "${APP_DIR}/storage"
 
+# Gallery media now lives under the same persistent storage tree, at
+# ${DATA_DIR}/storage/media/<category>. Migrate the two older layouts if present.
+if [[ -d "${DATA_DIR}/gallery" && ! -L "${DATA_DIR}/gallery" ]]; then
+  echo "==> Migrating ${DATA_DIR}/gallery to ${DATA_DIR}/storage/media"
+  rsync -a "${DATA_DIR}/gallery/" "${DATA_DIR}/storage/media/"
+  mv "${DATA_DIR}/gallery" "${DATA_DIR}/gallery.migrated"
+fi
+
 if [[ -d "${APP_DIR}/src/assets/gallery" && ! -L "${APP_DIR}/src/assets/gallery" ]]; then
-  rsync -a "${APP_DIR}/src/assets/gallery/" "${DATA_DIR}/gallery/"
+  rsync -a "${APP_DIR}/src/assets/gallery/" "${DATA_DIR}/storage/media/"
   rm -rf "${APP_DIR}/src/assets/gallery"
 fi
-ln -sfn "${DATA_DIR}/gallery" "${APP_DIR}/src/assets/gallery"
 
 chown -R "${APP_USER}:${APP_USER}" "${APP_ROOT}"
 
 if [[ ! -f "${APP_DIR}/.env" ]]; then
-  echo "==> Creating .env from deploy template"
-  cp "${APP_DIR}/scripts/deploy/.env.production.template" "${APP_DIR}/.env"
+  echo "==> Creating .env from shared template"
+  cp "${APP_DIR}/.env.example" "${APP_DIR}/.env"
   chown "${APP_USER}:${APP_USER}" "${APP_DIR}/.env"
   chmod 600 "${APP_DIR}/.env"
 fi
@@ -102,7 +109,7 @@ cp "${APP_DIR}/scripts/deploy/nginx.demori.conf" "/etc/nginx/sites-available/dem
 sed -i "s|__DOMAIN__|${DOMAIN}|g" /etc/nginx/sites-available/demori
 sed -i "s|__APP_DIST__|${APP_DIR}/dist/demori-photos/browser|g" /etc/nginx/sites-available/demori
 sed -i "s|__UPLOADS_DIR__|${DATA_DIR}/storage/uploads|g" /etc/nginx/sites-available/demori
-sed -i "s|__GALLERY_DIR__|${DATA_DIR}/gallery|g" /etc/nginx/sites-available/demori
+sed -i "s|__GALLERY_DIR__|${DATA_DIR}/storage/media|g" /etc/nginx/sites-available/demori
 
 ln -sfn /etc/nginx/sites-available/demori /etc/nginx/sites-enabled/demori
 rm -f /etc/nginx/sites-enabled/default

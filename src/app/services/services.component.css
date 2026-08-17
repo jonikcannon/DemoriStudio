@@ -157,6 +157,41 @@
   align-self: stretch;
 }
 
+.service-media-cycle {
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #cdc8bd;
+  padding: 8px 10px;
+  background: #ece8de;
+}
+
+.service-media-cycle p {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #394039;
+  min-width: 64px;
+  text-align: center;
+}
+
+.service-media-nav {
+  border: 1px solid #7f8479;
+  background: #f4f2ec;
+  color: #26362e;
+  width: 30px;
+  height: 30px;
+  line-height: 1;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.service-media-nav:hover {
+  background: #dcd7ca;
+}
+
 .service-media img,
 .service-media video {
   width: 100%;

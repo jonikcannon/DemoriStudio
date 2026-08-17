@@ -7,12 +7,14 @@
   "type": "commonjs",
   "main": "index.js",
   "scripts": {
-    "prestart": "node scripts/generate-gallery-manifest.js",
+    "setup:media": "node scripts/setup-media.js",
+    "prestart": "npm run setup:media && node scripts/generate-gallery-manifest.js",
     "start": "ng serve",
-    "prebuild": "node scripts/generate-gallery-manifest.js",
+    "prebuild": "npm run setup:media && node scripts/generate-gallery-manifest.js",
     "build": "ng build",
     "test": "ng test",
-    "api": "node server/server.js"
+    "api": "node server/server.js",
+    "migrate:drive-media": "node scripts/migrate-uploads-to-drive.js"
   },
   "dependencies": {
     "@angular/animations": "^18.2.0",
