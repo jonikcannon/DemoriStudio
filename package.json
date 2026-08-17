@@ -8,9 +8,13 @@
   "main": "index.js",
   "scripts": {
     "setup:media": "node scripts/setup-media.js",
-    "prestart": "npm run setup:media && node scripts/generate-gallery-manifest.js",
+    "manifest": "node scripts/generate-gallery-manifest.js",
+    "media": "npm run setup:media && npm run manifest",
+    "prestart": "npm run media",
     "start": "ng serve",
-    "prebuild": "npm run setup:media && node scripts/generate-gallery-manifest.js",
+    "prestrict": "npm run media",
+    "strict": "concurrently -k -n api,web -c cyan,magenta -p \"[{name}]\" \"node server/server.js\" \"ng serve\"",
+    "prebuild": "npm run media",
     "build": "ng build",
     "test": "ng test",
     "api": "node server/server.js",
@@ -41,6 +45,7 @@
     "@angular-devkit/build-angular": "^18.2.0",
     "@angular/cli": "^18.2.0",
     "@angular/compiler-cli": "^18.2.0",
+    "concurrently": "^10.0.5",
     "typescript": "~5.5.4"
   }
 }

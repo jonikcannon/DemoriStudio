@@ -2,10 +2,14 @@
 
 1. Copy `.env.example` to `.env` and fill in every value. Use the same template for both local and production setup.
 2. Run `npm install`.
-3. Run `npm run api` and `npm start` in separate terminals.
+3. Run `npm run strict` — starts the API and the dev server together.
 
-Both are required: `npm run api` serves gallery media at `/assets/gallery/`, and
-`npm start` proxies that path to it. Without the API running, the gallery is empty.
+Both processes are required: the API serves gallery media at `/assets/gallery/`, and
+the dev server proxies that path to it. Without the API running, the gallery is empty.
+
+`npm run strict` runs them concurrently with tagged `[api]` / `[web]` output, and if
+either one exits it shuts down the other, so you never end up with a half-running
+stack. To run them in separate terminals instead, use `npm run api` and `npm start`.
 
 ## Gallery media
 
