@@ -1,8 +1,13 @@
 # Demori Studio
 
+## Setup
+
 1. Copy `.env.example` to `.env` and fill in every value. Use the same template for both local and production setup.
 2. Run `npm install`.
-3. Run `npm run strict` — starts the API and the dev server together.
+3. **Provision gallery media into `storage/media/`.** A fresh clone has none — the
+   photos are not in git, so the gallery renders empty until you copy them in. See
+   [Gallery media](#gallery-media) below.
+4. Run `npm run strict` — starts the API and the dev server together.
 
 Both processes are required: the API serves gallery media at `/assets/gallery/`, and
 the dev server proxies that path to it. Without the API running, the gallery is empty.
@@ -11,6 +16,23 @@ the dev server proxies that path to it. Without the API running, the gallery is 
 either one exits it shuts down the other, so you never end up with a half-running
 stack. To run them in separate terminals instead, use `npm run api` and `npm start`.
 
+## Where media lives
+
+There are two independent media systems. They are easy to confuse, because the API
+logs `Media storage: Google Drive mode …` at startup — that line refers only to the
+second one.
+
+| | Gallery (public portfolio) | Shop / product media |
+|---|---|---|
+| Stored in | `storage/media/<category>/` on local disk | Google Drive |
+| Added by | dropping files into a category folder | admin panel upload |
+| Served by | nginx in production, the API in dev | `/api/media/<token>` proxy, signed JWT |
+| In git? | no | no |
+
+The gallery deliberately does **not** use Drive: every view would proxy through Node
+with a signed token, with no CDN caching and Drive API quota acting as the gallery's
+rate limit.
+
 ## Gallery media
 
 Gallery media lives in `storage/media/<category>/` — one folder per category, the
@@ -18,6 +40,29 @@ folder name being the category. It is not tracked by git and not bundled by the
 Angular build; it is served off disk by the API in dev and by nginx in production.
 Add or recategorise photos by moving files between those folders, then rerun
 `npm start` to refresh the manifest. See [storage/media/README.md](storage/media/README.md).
+
+### Provisioning on a new machine
+
+`git clone` gives you the app but no photos. Copy them in from wherever your master
+copy lives, preserving the category folder names:
+
+```bash
+# from the production VPS
+rsync -av user@your-vps:/var/www/demori/data/storage/media/ storage/media/
+
+# or from a local/external backup
+robocopy D:\backups\demori-media storage\media /E    # Windows
+rsync -av /path/to/backup/media/ storage/media/      # macOS/Linux
+```
+
+Then regenerate the manifest and check the count matches your library:
+
+```bash
+npm run media
+```
+
+Because this content exists only on disk and on the VPS, **keep an off-machine backup**.
+Nothing in this repo can restore it.
 
 ## Production notes
 
@@ -32,4 +77,10 @@ Add or recategorise photos by moving files between those folders, then rerun
 - Filter by search text, service, and status.
 - Update inquiry status (`New`, `In progress`, `Closed`) directly in the dashboard.
 
-This starter keeps products in memory. Replace the `products` array with a database before deploying so products and orders persist after a restart.
+## Runtime data
+
+The API persists products to `storage/products/products.json` and inquiries to
+`storage/inquiries/`, both untracked and per-environment. On the VPS these live under
+`/var/www/demori/data/storage/`, so deploys never overwrite them. Products survive a
+restart, but a JSON file is not a substitute for a real database once orders matter —
+move to one before the catalog or order volume grows.
