@@ -7,6 +7,7 @@ import { Service, ServicesComponent } from './services/services.component';
 import { AboutComponent } from './about/about.component';
 import { Product, ProductEditPayload, ProductOrderPayload, ProductsComponent } from './products/products.component';
 import { CartComponent, CartItem } from './cart/cart.component';
+import { mediaUrl } from './media-url';
 
 type Work = { id?: string; image: string; title: string; type: string; size?: string; price?: number; mediaType?: 'image' | 'video' };
 type GalleryItem = { category: string; title: string; image: string; mediaType: 'image' | 'video' };
@@ -34,6 +35,9 @@ export class AppComponent implements OnInit {
   showAll = false;
   activeService = 'Aerial';
   activeGallery = 'All';
+  // Hard-coded in the template rather than manifest-driven, so it needs the
+  // same bucket resolution the manifest entries already carry.
+  readonly heroVideo = mediaUrl('assets/gallery/aerial/dji_fly_20260709_091900_0026_1783650454489_slowmotion.mp4');
   activeSection: 'home' | 'products' | 'gallery' | 'services' | 'about' | 'contact' = 'home';
   adminOpen = false;
   adminView: 'products' | 'inquiries' = 'products';
@@ -102,7 +106,7 @@ export class AppComponent implements OnInit {
       icon: '▦',
       title: 'Digital printing from product gallery items',
       text: 'Select any published image from the Products page and order professional digital prints with consistent color, archival paper options, and batch-ready pricing.',
-      image: 'assets/gallery/nature/20250814_164125.jpg',
+      image: mediaUrl('assets/gallery/nature/20250814_164125.jpg'),
       mediaType: 'image',
       pricingTitle: 'Comprehensive print pricing (up to 8 x 11)',
       tiers: [
@@ -160,7 +164,7 @@ export class AppComponent implements OnInit {
       icon: '⌂',
       title: 'Residential real estate photography',
       text: 'MLS-ready interior and exterior coverage with consistent color, clean verticals, and agent-focused composition.',
-      image: 'assets/gallery/beach/20260708_140401.jpg',
+      image: mediaUrl('assets/gallery/beach/20260708_140401.jpg'),
       mediaType: 'image',
       pricingTitle: 'Photo package strategy',
       tiers: [
@@ -178,9 +182,9 @@ export class AppComponent implements OnInit {
       icon: '✦',
       title: 'Drone photography and aerial coverage',
       text: 'FAA-compliant aerial captures that highlight lot lines, neighborhood context, rooflines, and estate scale.',
-      image: 'assets/gallery/aerial/dji_fly_20260709_091946_0027_1783650449096_slowmotion.mp4',
+      image: mediaUrl('assets/gallery/aerial/dji_fly_20260709_091946_0027_1783650449096_slowmotion.mp4'),
       mediaType: 'video',
-      poster: 'assets/gallery/aerial/dji_fly_20260709_092240_0032_1783650435377_photo_beautify.jpg',
+      poster: mediaUrl('assets/gallery/aerial/dji_fly_20260709_092240_0032_1783650435377_photo_beautify.jpg'),
       pricingTitle: 'Drone pricing strategy',
       tiers: [
         { label: 'Drone add-on to photo shoot', price: '$75 - $150', details: 'Adds 5-15 aerial images to a ground package.' },

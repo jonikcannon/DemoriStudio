@@ -7,6 +7,10 @@ storage/sale-photos/originals/*
 storage/sale-photos/deliveries/*
 !storage/sale-photos/deliveries/.gitkeep
 
+# Generated at prestart/prebuild from MEDIA_CDN_URL; tells the browser which
+# origin serves gallery media. Per-environment, so never committed.
+src/assets/media-config.json
+
 # Gallery media lives on disk / object storage, never in git.
 # Category folders under storage/media are the source of truth for gallery categories.
 storage/media/*

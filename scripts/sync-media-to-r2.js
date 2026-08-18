@@ -14,7 +14,7 @@ const fs = require('fs');
 const path = require('path');
 const { resolveMediaDir } = require('./media-dir');
 const {
-  config, MEDIA_PREFIX, isR2Configured, createR2Client,
+  config, MEDIA_PREFIX, isR2Configured, createR2Client, listMediaObjects,
   toObjectKey, toPublicUrl, contentTypeFor
 } = require('./r2');
 
@@ -48,18 +48,8 @@ function walk(dir, base = dir) {
 }
 
 async function listRemote(client) {
-  const { ListObjectsV2Command } = require('@aws-sdk/client-s3');
   const remote = new Map();
-  let token;
-  do {
-    const page = await client.send(new ListObjectsV2Command({
-      Bucket: config.bucket,
-      Prefix: `${MEDIA_PREFIX}/`,
-      ContinuationToken: token
-    }));
-    for (const obj of page.Contents || []) remote.set(obj.Key, obj.Size);
-    token = page.IsTruncated ? page.NextContinuationToken : undefined;
-  } while (token);
+  for (const object of await listMediaObjects(client)) remote.set(object.key, object.size);
   return remote;
 }
 

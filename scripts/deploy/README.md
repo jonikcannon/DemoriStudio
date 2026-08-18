@@ -23,10 +23,14 @@ Deploy updates
 
 Notes
 - This app writes uploads, inquiries, and gallery edits to persistent paths under /var/www/demori/data.
-- Gallery media lives at /var/www/demori/data/storage/media/<category>/ and is served
-  directly by Nginx at /assets/gallery/. It is not in git and not produced by the build,
-  so a deploy never touches it. Upload new media there with rsync/scp, then run
-  `node scripts/generate-gallery-manifest.js` (or redeploy) to refresh the manifest.
+- Gallery media comes from the Cloudflare R2 bucket when MEDIA_CDN_URL is set: Nginx
+  redirects /assets/gallery/ there, and `npm run manifest` builds the gallery listing
+  by listing the bucket. The VPS therefore needs no copy of the photos at all --
+  upload from your workstation with `npm run media:sync`, then redeploy (or run
+  `node scripts/generate-gallery-manifest.js` on the server) to refresh the manifest.
+- Without MEDIA_CDN_URL, media is served off /var/www/demori/data/storage/media/<category>/
+  by Nginx and the manifest is built from that directory. It is not in git and not
+  produced by the build, so a deploy never touches it; upload with rsync/scp instead.
 - Older layouts (data/gallery, or media inside src/assets/gallery) are migrated
   automatically by bootstrap-vps.sh; the old data/gallery is renamed to
   data/gallery.migrated rather than deleted.

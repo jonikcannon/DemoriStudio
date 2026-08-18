@@ -25,7 +25,7 @@ const inquiriesDir = path.join(__dirname, '../storage/inquiries');
 if (!fs.existsSync(inquiriesDir)) fs.mkdirSync(inquiriesDir, { recursive: true });
 const productsDir = path.join(__dirname, '../storage/products');
 if (!fs.existsSync(productsDir)) fs.mkdirSync(productsDir, { recursive: true });
-const { resolveMediaDir } = require('../scripts/media-dir');
+const { resolveMediaDir, CATEGORIES } = require('../scripts/media-dir');
 const {
   config: r2Config, isR2Configured, isCdnEnabled, createR2Client,
   toObjectKey: toR2Key, toPublicUrl: toR2Url
@@ -288,11 +288,17 @@ async function moveGalleryObjectInR2(fromRelative, toRelative) {
   await r2Client.send(new DeleteObjectCommand({ Bucket: r2Config.bucket, Key: fromKey }));
 }
 
+// Category folders on disk are the authoring view, but a host that serves
+// media straight from the bucket may have none of them. Fall back to the
+// canonical list so category moves stay possible there.
 function listGalleryCategories() {
-  if (!fs.existsSync(galleryDir)) return [];
-  return fs.readdirSync(galleryDir, { withFileTypes: true })
-    .filter(entry => entry.isDirectory())
-    .map(entry => entry.name.toLowerCase());
+  const known = new Set(CATEGORIES);
+  if (fs.existsSync(galleryDir)) {
+    for (const entry of fs.readdirSync(galleryDir, { withFileTypes: true })) {
+      if (entry.isDirectory()) known.add(entry.name.toLowerCase());
+    }
+  }
+  return [...known];
 }
 
 function toCategoryFolder(value) {
@@ -726,15 +732,20 @@ app.patch('/api/admin/gallery/category', auth, async (req, res) => {
   const destinationPath = path.join(galleryDir, targetFolder, fileName);
   const nextImage = `assets/gallery/${targetFolder}/${encodeURIComponent(fileName)}`;
 
-  if (!fs.existsSync(sourcePath)) {
+  // The bucket is what serves the gallery, so a host without the photos on
+  // disk can still recategorise them -- the move just happens only in R2.
+  const hasLocalCopy = fs.existsSync(sourcePath);
+  if (!hasLocalCopy && !isR2Configured()) {
     return res.status(404).json({ error: 'Source media file was not found.' });
   }
 
   if (currentFolder !== targetFolder) {
-    if (fs.existsSync(destinationPath)) {
-      return res.status(409).json({ error: 'A file with the same name already exists in that category.' });
+    if (hasLocalCopy) {
+      if (fs.existsSync(destinationPath)) {
+        return res.status(409).json({ error: 'A file with the same name already exists in that category.' });
+      }
+      fs.renameSync(sourcePath, destinationPath);
     }
-    fs.renameSync(sourcePath, destinationPath);
 
     // Keep the bucket in step. If this fails the local move has already
     // happened, so roll it back rather than leave disk and CDN disagreeing.
@@ -743,10 +754,12 @@ app.patch('/api/admin/gallery/category', auth, async (req, res) => {
         await moveGalleryObjectInR2(image, nextImage);
       } catch (error) {
         console.error('R2 category move failed; rolling back local move.', error.message || error);
-        try {
-          fs.renameSync(destinationPath, sourcePath);
-        } catch (rollbackError) {
-          console.error('Rollback of local move also failed.', rollbackError.message || rollbackError);
+        if (hasLocalCopy) {
+          try {
+            fs.renameSync(destinationPath, sourcePath);
+          } catch (rollbackError) {
+            console.error('Rollback of local move also failed.', rollbackError.message || rollbackError);
+          }
         }
         return res.status(502).json({ error: 'Could not move the media in remote storage. Nothing was changed.' });
       }

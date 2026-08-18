@@ -78,6 +78,39 @@ function toPublicUrl(objectKey) {
   return `${config.cdnUrl}/${encoded}`;
 }
 
+// Every media object in the bucket, keyed as `assets/gallery/<category>/<file>`.
+// This is what lets the manifest be built from the bucket rather than from
+// local disk: a machine that has never held the photos can still describe the
+// gallery correctly, because the bucket is what actually serves it.
+async function listMediaObjects(client) {
+  const { ListObjectsV2Command } = require('@aws-sdk/client-s3');
+  const objects = [];
+  let token;
+  do {
+    const page = await client.send(new ListObjectsV2Command({
+      Bucket: config.bucket,
+      Prefix: `${MEDIA_PREFIX}/`,
+      ContinuationToken: token
+    }));
+    for (const object of page.Contents || []) {
+      objects.push({ key: object.Key, size: object.Size });
+    }
+    token = page.IsTruncated ? page.NextContinuationToken : undefined;
+  } while (token);
+  return objects;
+}
+
+// assets/gallery/beach/foo.jpg -> { folder: 'beach', name: 'foo.jpg' }
+// Anything not shaped like that (a stray top-level object, a deeper nesting)
+// returns null and is skipped by callers.
+function fromObjectKey(objectKey) {
+  const parts = String(objectKey || '').split('/');
+  if (parts.length !== 4) return null;
+  const [assets, gallery, folder, name] = parts;
+  if (`${assets}/${gallery}` !== MEDIA_PREFIX || !folder || !name) return null;
+  return { folder: folder.toLowerCase(), name };
+}
+
 const CONTENT_TYPES = {
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
@@ -98,7 +131,9 @@ module.exports = {
   isR2Configured,
   isCdnEnabled,
   createR2Client,
+  listMediaObjects,
   toObjectKey,
+  fromObjectKey,
   toPublicUrl,
   contentTypeFor
 };

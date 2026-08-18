@@ -4,13 +4,16 @@
 
 1. Copy `.env.example` to `.env` and fill in every value. Use the same template for both local and production setup.
 2. Run `npm install`.
-3. **Provision gallery media into `storage/media/`.** A fresh clone has none — the
+3. **Gallery media.** With Cloudflare R2 configured (`R2_*` and `MEDIA_CDN_URL` in
+   `.env`), a fresh clone needs no local photos at all — the gallery is listed from
+   and served by the bucket. Without R2, provision `storage/media/` by hand; the
    photos are not in git, so the gallery renders empty until you copy them in. See
    [Gallery media](#gallery-media) below.
 4. Run `npm run strict` — starts the API and the dev server together.
 
-Both processes are required: the API serves gallery media at `/assets/gallery/`, and
-the dev server proxies that path to it. Without the API running, the gallery is empty.
+In R2 mode the browser fetches media straight from the bucket, so only the manifest
+comes from the API. Without R2 both processes are required: the API serves gallery
+media at `/assets/gallery/` and the dev server proxies that path to it.
 
 `npm run strict` runs them concurrently with tagged `[api]` / `[web]` output, and if
 either one exits it shuts down the other, so you never end up with a half-running
@@ -24,7 +27,7 @@ second one.
 
 | | Gallery (public portfolio) | Shop / product media |
 |---|---|---|
-| Stored in | `storage/media/<category>/` on local disk | Google Drive |
+| Stored in | Cloudflare R2 (`storage/media/<category>/` on disk when R2 is off) | Google Drive |
 | Added by | dropping files into a category folder | admin panel upload |
 | Served by | Cloudflare R2 + CDN when `MEDIA_CDN_URL` is set, otherwise nginx (prod) / the API (dev) | `/api/media/<token>` proxy, signed JWT |
 | In git? | no | no |
@@ -35,16 +38,37 @@ rate limit.
 
 ## Gallery media
 
-Gallery media lives in `storage/media/<category>/` — one folder per category, the
-folder name being the category. It is not tracked by git and not bundled by the
-Angular build; it is served off disk by the API in dev and by nginx in production.
-Add or recategorise photos by moving files between those folders, then rerun
-`npm start` to refresh the manifest. See [storage/media/README.md](storage/media/README.md).
+Gallery media is organised as one folder per category, the folder name being the
+category: `storage/media/<category>/` on disk, mirrored to
+`assets/gallery/<category>/` in the R2 bucket. It is never tracked by git and never
+bundled by the Angular build.
+
+**Where the gallery listing comes from.** `npm run manifest` writes
+`gallery-manifest.json`, the list the gallery renders from. With R2 configured it
+builds that list by listing the bucket; otherwise it reads local disk. The bucket
+wins because it is the only place guaranteed to be complete — a fresh clone or a
+rebuilt VPS has no photos on disk, and listing an empty directory would publish an
+empty gallery over a bucket holding the whole library.
+
+Add or recategorise photos by moving files between the local folders, then run
+`npm run media:sync` and `npm run manifest`. See
+[storage/media/README.md](storage/media/README.md).
+
+```bash
+npm run manifest             # list from the bucket when R2 is on
+npm run manifest -- --local  # force the local-disk listing
+```
+
+Local files that have not been uploaded yet are reported and left out of the
+manifest — the gallery can only show what is actually servable.
 
 ### Provisioning on a new machine
 
-`git clone` gives you the app but no photos. Copy them in from wherever your master
-copy lives, preserving the category folder names:
+With R2 configured, nothing to do: `git clone`, `npm install`, `npm run media`, and
+the gallery is complete without a single photo on disk.
+
+Without R2, copy the photos in from wherever your master copy lives, preserving the
+category folder names:
 
 ```bash
 # from the production VPS
@@ -61,8 +85,9 @@ Then regenerate the manifest and check the count matches your library:
 npm run media
 ```
 
-Because this content exists only on disk and on the VPS, **keep an off-machine backup**.
-Nothing in this repo can restore it.
+Keep a copy of the library somewhere you control. The bucket is the serving origin,
+not a backup — `media:sync --prune` deletes from it, and nothing in this repo can
+restore what is gone from both.
 
 ### Serving media from Cloudflare R2
 
@@ -87,15 +112,29 @@ free, so the gallery's bandwidth stops landing on the VPS.
    npm run manifest
    ```
 
-`MEDIA_CDN_URL` is the switch. Unset, everything is served from local disk exactly
-as before; set, the manifest emits absolute CDN URLs. Objects keep the
-`assets/gallery/<category>/<file>` key prefix, which is what lets the app's gallery
-matching work unchanged against absolute URLs.
+`MEDIA_CDN_URL` is the switch. Unset, everything is listed and served from local
+disk exactly as before; set, the manifest is listed from the bucket and emits
+absolute CDN URLs. Objects keep the `assets/gallery/<category>/<file>` key prefix,
+which is what lets the app's gallery matching work unchanged against absolute URLs.
+
+The browser reaches the bucket by three routes, all driven by that one variable:
+
+- **Manifest entries** are absolute CDN URLs, so gallery thumbnails and the viewer
+  load straight from R2.
+- **Hard-coded paths** — the hero video, the about portrait, the service tiles — are
+  resolved at startup against `assets/media-config.json`, a small file `npm run
+  manifest` writes into `src/assets/` and the build copies into `dist/`. This is why
+  the 206 MB hero video is fetched from the bucket on the first request rather than
+  bouncing off the origin.
+- **Anything still requesting `/assets/gallery/…` from the origin** gets a 302 to the
+  bucket from the API (dev) or nginx (prod), so no path added later can quietly
+  start billing the origin for bandwidth.
 
 Re-run `npm run media:sync` after adding files — it skips anything already uploaded
 at the same size, so it is cheap and resumable. Add `--prune` to delete objects that
 no longer exist locally. Changing a photo's category in the admin panel moves the
-object in R2 as well, and rolls the local move back if the bucket update fails.
+object in R2 as well, and rolls the local move back if the bucket update fails; on a
+host with no local copy of the photos the move happens in the bucket alone.
 
 For the initial bulk upload, [rclone](https://rclone.org/s3/#cloudflare-r2) is worth
 considering over `media:sync` — it parallelises and resumes better across several GB.
