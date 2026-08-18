@@ -26,6 +26,10 @@ if (!fs.existsSync(inquiriesDir)) fs.mkdirSync(inquiriesDir, { recursive: true }
 const productsDir = path.join(__dirname, '../storage/products');
 if (!fs.existsSync(productsDir)) fs.mkdirSync(productsDir, { recursive: true });
 const { resolveMediaDir } = require('../scripts/media-dir');
+const {
+  config: r2Config, isR2Configured, isCdnEnabled, createR2Client,
+  toObjectKey: toR2Key, toPublicUrl: toR2Url
+} = require('../scripts/r2');
 const galleryDir = resolveMediaDir();
 if (!fs.existsSync(galleryDir)) fs.mkdirSync(galleryDir, { recursive: true });
 const galleryManifestPath = path.join(galleryDir, 'gallery-manifest.json');
@@ -257,6 +261,31 @@ function toGalleryRelativeImage(image) {
   const withoutHost = trimmed.replace(/^https?:\/\/[^/]+\/?/i, '');
   if (withoutHost.startsWith('assets/gallery/')) return withoutHost;
   return '';
+}
+
+const r2Client = createR2Client();
+
+// Public URL for a gallery path like `assets/gallery/beach/foo.jpg`. Points at
+// the CDN when MEDIA_CDN_URL is set, otherwise stays relative and is served
+// off local disk.
+function toGalleryPublicImage(relativeImage) {
+  if (!isCdnEnabled()) return relativeImage;
+  return toR2Url(relativeImage);
+}
+
+// Mirror a category change into R2. Objects are keyed by category, so a move
+// on disk has to be a copy+delete in the bucket or the CDN URL 404s.
+async function moveGalleryObjectInR2(fromRelative, toRelative) {
+  if (!r2Client || !isR2Configured()) return;
+  const { CopyObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
+  const fromKey = decodeURIComponent(fromRelative);
+  const toKey = decodeURIComponent(toRelative);
+  await r2Client.send(new CopyObjectCommand({
+    Bucket: r2Config.bucket,
+    Key: toKey,
+    CopySource: `${r2Config.bucket}/${fromKey}`.split('/').map(encodeURIComponent).join('/')
+  }));
+  await r2Client.send(new DeleteObjectCommand({ Bucket: r2Config.bucket, Key: fromKey }));
 }
 
 function listGalleryCategories() {
@@ -649,7 +678,7 @@ app.delete('/api/admin/products/:id', auth, async (req, res) => {
   return res.json({ ok: true, id });
 });
 
-app.patch('/api/admin/gallery/category', auth, (req, res) => {
+app.patch('/api/admin/gallery/category', auth, async (req, res) => {
   const image = toGalleryRelativeImage(req.body?.image);
   const requestedCategory = String(req.body?.category || '').trim();
   if (!image || !requestedCategory) {
@@ -686,14 +715,32 @@ app.patch('/api/admin/gallery/category', auth, (req, res) => {
       return res.status(409).json({ error: 'A file with the same name already exists in that category.' });
     }
     fs.renameSync(sourcePath, destinationPath);
+
+    // Keep the bucket in step. If this fails the local move has already
+    // happened, so roll it back rather than leave disk and CDN disagreeing.
+    if (isR2Configured()) {
+      try {
+        await moveGalleryObjectInR2(image, nextImage);
+      } catch (error) {
+        console.error('R2 category move failed; rolling back local move.', error.message || error);
+        try {
+          fs.renameSync(destinationPath, sourcePath);
+        } catch (rollbackError) {
+          console.error('Rollback of local move also failed.', rollbackError.message || rollbackError);
+        }
+        return res.status(502).json({ error: 'Could not move the media in remote storage. Nothing was changed.' });
+      }
+    }
   }
+
+  const nextPublicImage = toGalleryPublicImage(nextImage);
 
   products = products.map(product => {
     const relative = toGalleryRelativeImage(product.image);
     if (relative !== image) return product;
     return {
       ...product,
-      image: toAbsoluteImage(nextImage)
+      image: isCdnEnabled() ? nextPublicImage : toAbsoluteImage(nextImage)
     };
   });
   if (!writeProductsToDisk()) {
@@ -706,11 +753,13 @@ app.patch('/api/admin/gallery/category', auth, (req, res) => {
       if (Array.isArray(manifest)) {
         const categoryLabel = targetFolder.charAt(0).toUpperCase() + targetFolder.slice(1);
         const updated = manifest.map(item => {
-          if (String(item?.image || '') !== image) return item;
+          // Manifest entries are absolute CDN URLs in R2 mode and relative
+          // paths otherwise; normalise both sides before comparing.
+          if (toGalleryRelativeImage(item?.image) !== image) return item;
           return {
             ...item,
             category: categoryLabel,
-            image: nextImage
+            image: nextPublicImage
           };
         });
         fs.writeFileSync(galleryManifestPath, `${JSON.stringify(updated, null, 2)}\n`, 'utf8');
@@ -722,8 +771,8 @@ app.patch('/api/admin/gallery/category', auth, (req, res) => {
 
   return res.json({
     ok: true,
-    image: nextImage,
-    absoluteImage: toAbsoluteImage(nextImage),
+    image: nextPublicImage,
+    absoluteImage: isCdnEnabled() ? nextPublicImage : toAbsoluteImage(nextImage),
     category: targetFolder.charAt(0).toUpperCase() + targetFolder.slice(1)
   });
 });
@@ -937,6 +986,9 @@ console.log(`Products loaded: ${products.length}`);
 // ECONNREFUSED for the first seconds of every boot -- or forever, if Drive was
 // unreachable.
 app.listen(port, () => console.log(`Demori API running on http://localhost:${port}`));
+console.log(isCdnEnabled()
+  ? `Gallery media: CDN (${r2Config.cdnUrl})`
+  : 'Gallery media: local disk');
 
 initializeMediaStorage().catch((error) => {
   console.error('Media storage init failed; continuing in local filesystem mode.', error.message || error);

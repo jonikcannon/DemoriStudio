@@ -1,0 +1,85 @@
+// Cloudflare R2 access, shared by the sync script and the API.
+//
+// R2 speaks the S3 API, so we use the AWS SDK pointed at the R2 endpoint.
+//
+// Object keys deliberately keep the `assets/gallery/<category>/<file>` prefix
+// that the app already uses for local media. Both getProductImageKey() in the
+// Angular app and toGalleryRelativeImage() in the API strip protocol+host
+// before matching on that prefix, so absolute CDN URLs flow through the
+// existing gallery logic without any change to either.
+
+const path = require('path');
+
+const MEDIA_PREFIX = 'assets/gallery';
+
+const config = {
+  accountId: String(process.env.R2_ACCOUNT_ID || '').trim(),
+  accessKeyId: String(process.env.R2_ACCESS_KEY_ID || '').trim(),
+  secretAccessKey: String(process.env.R2_SECRET_ACCESS_KEY || '').trim(),
+  bucket: String(process.env.R2_BUCKET || '').trim(),
+  // Public base URL media is served from, e.g. https://media.demori.studio
+  // (a custom domain bound to the bucket). No trailing slash.
+  cdnUrl: String(process.env.MEDIA_CDN_URL || '').trim().replace(/\/+$/, '')
+};
+
+function isR2Configured() {
+  return Boolean(config.accountId && config.accessKeyId && config.secretAccessKey && config.bucket);
+}
+
+// Media is served from the CDN only once a public base URL is set. Until then
+// everything falls back to local disk, so dev and a half-finished migration
+// both keep working.
+function isCdnEnabled() {
+  return Boolean(config.cdnUrl);
+}
+
+function createR2Client() {
+  if (!isR2Configured()) return null;
+  const { S3Client } = require('@aws-sdk/client-s3');
+  return new S3Client({
+    region: 'auto',
+    endpoint: `https://${config.accountId}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId: config.accessKeyId,
+      secretAccessKey: config.secretAccessKey
+    }
+  });
+}
+
+// storage/media/beach/foo.jpg -> assets/gallery/beach/foo.jpg
+function toObjectKey(relativePath) {
+  const normalized = String(relativePath).split(path.sep).join('/').replace(/^\/+/, '');
+  return `${MEDIA_PREFIX}/${normalized}`;
+}
+
+// assets/gallery/beach/foo.jpg -> https://media.example.com/assets/gallery/beach/foo.jpg
+function toPublicUrl(objectKey) {
+  if (!config.cdnUrl) return objectKey;
+  const encoded = objectKey.split('/').map(encodeURIComponent).join('/');
+  return `${config.cdnUrl}/${encoded}`;
+}
+
+const CONTENT_TYPES = {
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.webp': 'image/webp',
+  '.avif': 'image/avif',
+  '.mp4': 'video/mp4',
+  '.json': 'application/json'
+};
+
+function contentTypeFor(file) {
+  return CONTENT_TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream';
+}
+
+module.exports = {
+  config,
+  MEDIA_PREFIX,
+  isR2Configured,
+  isCdnEnabled,
+  createR2Client,
+  toObjectKey,
+  toPublicUrl,
+  contentTypeFor
+};

@@ -26,7 +26,7 @@ second one.
 |---|---|---|
 | Stored in | `storage/media/<category>/` on local disk | Google Drive |
 | Added by | dropping files into a category folder | admin panel upload |
-| Served by | nginx in production, the API in dev | `/api/media/<token>` proxy, signed JWT |
+| Served by | Cloudflare R2 + CDN when `MEDIA_CDN_URL` is set, otherwise nginx (prod) / the API (dev) | `/api/media/<token>` proxy, signed JWT |
 | In git? | no | no |
 
 The gallery deliberately does **not** use Drive: every view would proxy through Node
@@ -63,6 +63,42 @@ npm run media
 
 Because this content exists only on disk and on the VPS, **keep an off-machine backup**.
 Nothing in this repo can restore it.
+
+### Serving media from Cloudflare R2
+
+Local disk stays the authoring master; R2 is the serving origin. Egress from R2 is
+free, so the gallery's bandwidth stops landing on the VPS.
+
+1. Create an R2 bucket and an API token scoped to it. Put the account ID, key,
+   secret and bucket name in `.env` (see `.env.example`).
+2. Bind a custom domain to the bucket in the Cloudflare dashboard, e.g.
+   `media.demori.studio`. Use a custom domain rather than the `r2.dev` URL, which
+   is rate limited and not meant for production.
+3. Push the media:
+
+   ```bash
+   npm run media:sync -- --dry-run   # preview
+   npm run media:sync                # upload
+   ```
+
+4. Set `MEDIA_CDN_URL=https://media.demori.studio` in `.env` and regenerate:
+
+   ```bash
+   npm run manifest
+   ```
+
+`MEDIA_CDN_URL` is the switch. Unset, everything is served from local disk exactly
+as before; set, the manifest emits absolute CDN URLs. Objects keep the
+`assets/gallery/<category>/<file>` key prefix, which is what lets the app's gallery
+matching work unchanged against absolute URLs.
+
+Re-run `npm run media:sync` after adding files — it skips anything already uploaded
+at the same size, so it is cheap and resumable. Add `--prune` to delete objects that
+no longer exist locally. Changing a photo's category in the admin panel moves the
+object in R2 as well, and rolls the local move back if the bucket update fails.
+
+For the initial bulk upload, [rclone](https://rclone.org/s3/#cloudflare-r2) is worth
+considering over `media:sync` — it parallelises and resumes better across several GB.
 
 ## Production notes
 
