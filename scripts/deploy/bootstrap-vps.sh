@@ -111,6 +111,19 @@ sed -i "s|__APP_DIST__|${APP_DIR}/dist/demori-photos/browser|g" /etc/nginx/sites
 sed -i "s|__UPLOADS_DIR__|${DATA_DIR}/storage/uploads|g" /etc/nginx/sites-available/demori
 sed -i "s|__GALLERY_DIR__|${DATA_DIR}/storage/media|g" /etc/nginx/sites-available/demori
 
+# Serve gallery media from R2 when a public CDN base URL is configured, else
+# from local disk. Reading MEDIA_CDN_URL straight out of the app's .env keeps
+# nginx and the API in agreement about where media lives.
+MEDIA_CDN_URL="$(grep -E '^MEDIA_CDN_URL=' "${APP_DIR}/.env" 2>/dev/null | cut -d= -f2- | tr -d '"'"'"' ' | sed 's|/*$||')"
+if [[ -n "${MEDIA_CDN_URL}" && "${MEDIA_CDN_URL}" != *".r2.cloudflarestorage.com"* ]]; then
+  echo "==> Gallery media will be redirected to ${MEDIA_CDN_URL}"
+  GALLERY_BODY="return 302 ${MEDIA_CDN_URL}\$request_uri;"
+else
+  echo "==> Gallery media will be served from ${DATA_DIR}/storage/media"
+  GALLERY_BODY='alias '"${DATA_DIR}"'/storage/media/; autoindex off; expires 7d; add_header Cache-Control "public";'
+fi
+sed -i "s|__GALLERY_LOCATION_BODY__|${GALLERY_BODY}|g" /etc/nginx/sites-available/demori
+
 ln -sfn /etc/nginx/sites-available/demori /etc/nginx/sites-enabled/demori
 rm -f /etc/nginx/sites-enabled/default
 nginx -t

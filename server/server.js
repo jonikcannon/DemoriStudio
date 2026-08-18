@@ -470,7 +470,27 @@ app.use(cors({ origin, methods: ['GET', 'POST', 'PATCH', 'DELETE'], allowedHeade
 // In production nginx serves both paths directly; these mounts are the dev-mode
 // and direct-hit equivalent.
 app.use('/uploads', express.static(uploadsDir, { maxAge: '7d' }));
-app.use('/assets/gallery', express.static(galleryDir, { maxAge: '7d' }));
+
+// The manifest is regenerated on every build and rewritten by category moves,
+// so it is never pushed to the bucket -- always serve it from disk.
+app.get('/assets/gallery/gallery-manifest.json', (req, res) => {
+  if (!fs.existsSync(galleryManifestPath)) return res.status(404).json({ error: 'Manifest not found.' });
+  return res.sendFile(galleryManifestPath);
+});
+
+// In CDN mode, send media requests to the bucket instead of serving bytes.
+// The manifest already carries absolute CDN URLs, but templates also hard-code
+// a few gallery paths (the hero video among them, at 206 MB). Redirecting here
+// means those go to R2 too, and any path added later is covered by default
+// rather than quietly billing the origin.
+if (isCdnEnabled()) {
+  app.get(/^\/assets\/gallery\/.+/, (req, res) => {
+    const key = req.path.replace(/^\/+/, '');
+    return res.redirect(302, toR2Url(key));
+  });
+} else {
+  app.use('/assets/gallery', express.static(galleryDir, { maxAge: '7d' }));
+}
 
 app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), stripeWebhook);
 app.use(express.json({ limit: '65mb' }));
