@@ -27,6 +27,12 @@ const prune = args.includes('--prune');
 const MULTIPART_THRESHOLD = 8 * 1024 * 1024;
 const mb = (bytes) => `${(bytes / 1048576).toFixed(1)} MB`;
 
+// Only media goes to the bucket. Notably this excludes gallery-manifest.json:
+// it is regenerated on every build and rewritten by category moves, so it must
+// not be served with the immutable cache header used for media below.
+const MEDIA_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.avif', '.mp4']);
+const isMedia = (file) => MEDIA_EXTENSIONS.has(path.extname(file).toLowerCase());
+
 function walk(dir, base = dir) {
   const out = [];
   if (!fs.existsSync(dir)) return out;
@@ -83,7 +89,7 @@ async function main() {
   }
 
   const mediaDir = resolveMediaDir();
-  const files = walk(mediaDir).filter(f => !f.relative.endsWith('.gitkeep'));
+  const files = walk(mediaDir).filter(f => isMedia(f.relative));
   if (!files.length) {
     console.log(`No media found in ${mediaDir}. Nothing to sync.`);
     return;

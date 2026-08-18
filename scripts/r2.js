@@ -29,8 +29,27 @@ function isR2Configured() {
 // Media is served from the CDN only once a public base URL is set. Until then
 // everything falls back to local disk, so dev and a half-finished migration
 // both keep working.
+//
+// The S3 API endpoint (<account>.r2.cloudflarestorage.com) is a tempting but
+// wrong value here: it only answers SigV4-signed requests, so a browser gets
+// 401/403 and the gallery silently goes blank. Refuse it rather than emit 154
+// broken URLs.
+let warnedAboutS3Endpoint = false;
+
 function isCdnEnabled() {
-  return Boolean(config.cdnUrl);
+  if (!config.cdnUrl) return false;
+  if (/\.r2\.cloudflarestorage\.com/i.test(config.cdnUrl)) {
+    if (!warnedAboutS3Endpoint) {
+      warnedAboutS3Endpoint = true;
+      console.warn(
+        'MEDIA_CDN_URL points at the R2 S3 API endpoint, which cannot serve public reads.\n' +
+        'Bind a custom domain to the bucket and use that instead. ' +
+        'Serving gallery media from local disk for now.'
+      );
+    }
+    return false;
+  }
+  return true;
 }
 
 function createR2Client() {
