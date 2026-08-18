@@ -926,13 +926,18 @@ async function stripeWebhook(req, res) {
   return res.json({ received: true });
 }
 
-initializeMediaStorage()
-  .then(() => {
-    loadProductsFromDisk();
-    console.log(`Products loaded: ${products.length}`);
-    app.listen(port, () => console.log(`Demori API running on http://localhost:${port}`));
-  })
-  .catch((error) => {
-    console.error('Failed to initialize media storage.', error);
-    process.exit(1);
-  });
+loadProductsFromDisk();
+console.log(`Products loaded: ${products.length}`);
+
+// Bind the port before probing Google Drive, not after. The probe is a network
+// round-trip with no timeout, and nothing served here needs it to have finished:
+// gallery media is read straight off disk, and uploads re-check
+// canUseGoogleDriveMedia() at call time. Blocking listen on it meant the dev
+// server proxied gallery requests to a socket that was not open yet and logged
+// ECONNREFUSED for the first seconds of every boot -- or forever, if Drive was
+// unreachable.
+app.listen(port, () => console.log(`Demori API running on http://localhost:${port}`));
+
+initializeMediaStorage().catch((error) => {
+  console.error('Media storage init failed; continuing in local filesystem mode.', error.message || error);
+});
