@@ -13,17 +13,23 @@ set -euo pipefail
 #                                         permission needed to route traffic
 #                                         to a public hostname)
 #   Zone    : Zone              : Read   (look the zone up by name)
-# Scope it to demoristudios.com alone, not "All zones".
+# Scope it to demori-studios.com alone, not "All zones".
 #
 # Idempotent: re-running reuses an existing tunnel of the same name and
 # updates records in place rather than duplicating them.
 
-DOMAIN="${DOMAIN:-demoristudios.com}"
+DOMAIN="${DOMAIN:-demori-studios.com}"
 TUNNEL_NAME="${TUNNEL_NAME:-demori-prod}"
 ORIGIN_URL="${ORIGIN_URL:-http://localhost:80}"
 APP_DIR="${APP_DIR:-/var/www/demori/app}"
 API="https://api.cloudflare.com/client/v4"
 
+# Default the token from ~/.cf-token (mode 600) so it never has to be passed on
+# a command line, where it would land in shell history. [:space:] rather than an
+# escaped \r\n so a CRLF-written file is handled without quoting hazards.
+if [[ -z "${CF_API_TOKEN:-}" && -r "${HOME}/.cf-token" ]]; then
+  CF_API_TOKEN="$(tr -d '[:space:]' < "${HOME}/.cf-token")"
+fi
 : "${CF_API_TOKEN:?Set CF_API_TOKEN (e.g. CF_API_TOKEN=\"\$(cat ~/.cf-token)\")}"
 
 cf() {
