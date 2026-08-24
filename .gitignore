@@ -27,3 +27,10 @@ storage/inquiries/
 .oauth-token.json
 client_secret_*.json
 demoristudios-*.json
+filezilla_*.xml
+
+# Runtime order records written by the API.
+storage/orders/
+
+# Runtime booking records written by the API.
+storage/bookings/

@@ -141,9 +141,10 @@ const appConfigPath = path.resolve(__dirname, '../src/assets/media-config.json')
 
 function writeAppMediaConfig() {
   const mediaBaseUrl = isCdnEnabled() ? r2Config.cdnUrl : '';
+  const apiBaseUrl = String(process.env.API_BASE_URL || '').trim().replace(/\/+$/, '');
   fs.mkdirSync(path.dirname(appConfigPath), { recursive: true });
-  fs.writeFileSync(appConfigPath, `${JSON.stringify({ mediaBaseUrl }, null, 2)}\n`);
-  return mediaBaseUrl;
+  fs.writeFileSync(appConfigPath, `${JSON.stringify({ mediaBaseUrl, apiBaseUrl }, null, 2)}\n`);
+  return { mediaBaseUrl, apiBaseUrl };
 }
 
 async function main() {
@@ -151,11 +152,12 @@ async function main() {
   const gallery = buildManifest(files);
 
   fs.writeFileSync(output, `${JSON.stringify(gallery, null, 2)}\n`);
-  const mediaBaseUrl = writeAppMediaConfig();
+  const { mediaBaseUrl, apiBaseUrl } = writeAppMediaConfig();
 
   console.log(`Gallery manifest created with ${gallery.length} item(s).`);
   console.log(`Listed from: ${source}`);
   console.log(mediaBaseUrl ? `Media URLs: ${mediaBaseUrl}` : 'Media URLs: local disk');
+  console.log(apiBaseUrl ? `API URL: ${apiBaseUrl}` : 'API URL: same-origin /api (Nginx proxies to the Express server)');
 }
 
 main().catch((error) => {

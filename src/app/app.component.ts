@@ -6,8 +6,9 @@ import { GalleryComponent } from './gallery/gallery.component';
 import { Service, ServicesComponent } from './services/services.component';
 import { AboutComponent } from './about/about.component';
 import { Product, ProductEditPayload, ProductOrderPayload, ProductsComponent } from './products/products.component';
+import { BookingComponent, BookingRequest, BookingSlot } from './booking/booking.component';
 import { CartComponent, CartItem } from './cart/cart.component';
-import { mediaUrl } from './media-url';
+import { getApiBaseUrl, mediaUrl } from './media-url';
 
 type Work = { id?: string; image: string; title: string; type: string; size?: string; price?: number; mediaType?: 'image' | 'video' };
 type GalleryItem = { category: string; title: string; image: string; mediaType: 'image' | 'video' };
@@ -25,7 +26,7 @@ type Inquiry = {
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, FormsModule, WorkComponent, GalleryComponent, ServicesComponent, AboutComponent, ProductsComponent, CartComponent],
+  imports: [CommonModule, FormsModule, WorkComponent, GalleryComponent, ServicesComponent, AboutComponent, ProductsComponent, CartComponent, BookingComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.css'
 })
@@ -38,9 +39,9 @@ export class AppComponent implements OnInit {
   // Hard-coded in the template rather than manifest-driven, so it needs the
   // same bucket resolution the manifest entries already carry.
   readonly heroVideo = mediaUrl('assets/gallery/aerial/dji_fly_20260709_091900_0026_1783650454489_slowmotion.mp4');
-  activeSection: 'home' | 'products' | 'gallery' | 'services' | 'about' | 'contact' = 'home';
+  activeSection: 'home' | 'products' | 'gallery' | 'services' | 'about' | 'contact' | 'booking' = 'home';
   adminOpen = false;
-  adminView: 'products' | 'inquiries' = 'products';
+  adminView: 'products' | 'inquiries' | 'bookings' = 'products';
   private changeDetector: ChangeDetectorRef;
   private ngZone: NgZone;
   constructor(changeDetector: ChangeDetectorRef, ngZone: NgZone) {
@@ -87,7 +88,7 @@ export class AppComponent implements OnInit {
   private readonly galleryPrefetchSize = 4;
   private readonly prefetchedMediaKeys = new Set<string>();
   @ViewChild('viewerVideo') viewerVideo?: ElementRef<HTMLVideoElement>;
-  private readonly api = 'http://localhost:3000/api';
+  private readonly api = getApiBaseUrl();
   private readonly productEditsStorageKey = 'demori_product_edits';
   private readonly hiddenProductImagesStorageKey = 'demori_hidden_product_images';
   private readonly digitalDeliveryEmailStorageKey = 'demori_digital_delivery_email';
@@ -225,6 +226,20 @@ export class AppComponent implements OnInit {
   ];
   products: Product[] = [];
   cart: CartItem[] = [];
+
+  // --- booking ---
+  bookingSlots: BookingSlot[] = [];
+  bookingLoading = false;
+  bookingSubmitting = false;
+  bookingError = '';
+  bookingPolicy = '';
+  bookingHoldMinutes = 15;
+  adminBookings: any[] = [];
+  adminSlots: any[] = [];
+  adminBookingError = '';
+  adminBookingLoading = false;
+  newSlot = { service: 'Aerial', date: '', sessionFee: 800, approxDurationMinutes: 120, location: '' };
+
   gallery: GalleryItem[] = [];
   get visibleWork() { return this.showAll ? this.work : this.work.slice(0, 4); }
   get visibleGallery() { return this.getVisibleGalleryItems(); }
@@ -244,12 +259,25 @@ export class AppComponent implements OnInit {
   get editableCategoryOptions() {
     return this.catalogCategories.filter(category => category !== 'All');
   }
-  get visibleProducts() {
-    return this.products.filter(product => {
+  private visibleProductsSource: Product[] | null = null;
+  private visibleProductsCategory = '';
+  private visibleProductsCache: Product[] = [];
+  // Memoised on the catalogue array and the active category, both of which only
+  // change in rebuildProducts()/changeGalleryCategory(). Two reasons this cannot
+  // rebuild per change-detection pass: the filter is O(products x gallery) via
+  // getGalleryCategoryByProductImage, and a fresh array reference would reset the
+  // paging in the OnPush products component on every unrelated re-render.
+  get visibleProducts(): Product[] {
+    if (this.visibleProductsSource === this.products && this.visibleProductsCategory === this.activeGallery) {
+      return this.visibleProductsCache;
+    }
+    this.visibleProductsSource = this.products;
+    this.visibleProductsCategory = this.activeGallery;
+    this.visibleProductsCache = this.products.filter(product => {
       if (this.activeGallery === 'All') return true;
-      const category = this.getGalleryCategoryByProductImage(product.image);
-      return category === this.activeGallery;
+      return this.getGalleryCategoryByProductImage(product.image) === this.activeGallery;
     });
+    return this.visibleProductsCache;
   }
   get canManageProducts() { return !!this.adminToken && this.adminAuthProvider === 'google'; }
   get cartCount() { return this.cart.reduce((total, item) => total + item.quantity, 0); }
@@ -352,7 +380,11 @@ export class AppComponent implements OnInit {
       if (!response.ok) throw new Error('Gallery manifest unavailable');
       this.gallery = await response.json() as GalleryItem[];
       this.syncAerialServiceMedia();
-    } catch { this.gallery = []; }
+    } catch (error) {
+      // Leaves the shop empty too: the catalogue is built from this manifest.
+      console.error('Gallery manifest could not be loaded; the gallery and shop will be empty.', error);
+      this.gallery = [];
+    }
     this.galleryProductsReady = true;
     this.rebuildProducts();
     this.resetGalleryLoading();
@@ -499,7 +531,8 @@ export class AppComponent implements OnInit {
       this.apiProducts = rawProducts
         .map(item => this.normalizeProduct(item))
         .filter(product => product.id && product.image);
-    } catch {
+    } catch (error) {
+      console.error('Product API request failed; falling back to gallery-derived products only.', error);
       this.apiProducts = [];
     }
     this.apiProductsReady = true;
@@ -678,12 +711,160 @@ export class AppComponent implements OnInit {
       void this.loadInquiries();
     }
   }
-  setAdminView(view: 'products' | 'inquiries') {
+  setAdminView(view: 'products' | 'inquiries' | 'bookings') {
     this.adminView = view;
     if (view === 'inquiries' && this.adminToken && !this.inquiries.length) {
       void this.loadInquiries();
     }
+    if (view === 'bookings' && this.adminToken) {
+      void this.loadAdminBookings();
+    }
   }
+
+  openBooking() {
+    this.activeSection = 'booking';
+    this.menuOpen = false;
+    if (!this.bookingSlots.length) void this.loadBookingSlots();
+  }
+
+  private async loadBookingSlots() {
+    this.bookingLoading = true;
+    this.bookingError = '';
+    try {
+      const response = await fetch(`${this.api}/booking/slots`, { cache: 'no-store' });
+      if (!response.ok) throw new Error('Availability unavailable');
+      const body = await response.json();
+      this.bookingSlots = Array.isArray(body?.slots) ? body.slots : [];
+      this.bookingPolicy = String(body?.refundPolicy || '');
+      this.bookingHoldMinutes = Number(body?.holdMinutes) || 15;
+    } catch (error) {
+      console.error('Booking availability could not be loaded.', error);
+      this.bookingSlots = [];
+      this.bookingError = 'Availability could not be loaded. Please try again shortly.';
+    }
+    this.bookingLoading = false;
+  }
+
+  async onBookSlot(request: BookingRequest) {
+    if (this.bookingSubmitting) return;
+    this.bookingSubmitting = true;
+    this.bookingError = '';
+    try {
+      const response = await fetch(`${this.api}/booking/hold`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request)
+      });
+      const body = await response.json();
+      if (!response.ok || !body?.url) {
+        // 409 means someone else took the date while this form was open, so the
+        // listing on screen is stale -- refresh it rather than leaving a date
+        // the visitor can never book.
+        this.bookingError = String(body?.error || 'Could not start checkout. Please try again.');
+        if (response.status === 404 || response.status === 409) await this.loadBookingSlots();
+        return;
+      }
+      window.location.href = body.url;
+    } catch (error) {
+      console.error('Booking request failed.', error);
+      this.bookingError = 'Could not reach the booking service. Please try again.';
+    } finally {
+      this.bookingSubmitting = false;
+    }
+  }
+
+  private async loadAdminBookings() {
+    if (!this.adminToken) return;
+    this.adminBookingLoading = true;
+    this.adminBookingError = '';
+    try {
+      const headers = { Authorization: `Bearer ${this.adminToken}` };
+      const [bookingsRes, slotsRes] = await Promise.all([
+        fetch(`${this.api}/admin/bookings`, { headers }),
+        fetch(`${this.api}/admin/booking/slots`, { headers })
+      ]);
+      if (!bookingsRes.ok || !slotsRes.ok) throw new Error('Booking data unavailable');
+      this.adminBookings = (await bookingsRes.json())?.bookings || [];
+      this.adminSlots = (await slotsRes.json())?.slots || [];
+    } catch (error) {
+      console.error('Admin booking data could not be loaded.', error);
+      this.adminBookingError = 'Could not load bookings.';
+    }
+    this.adminBookingLoading = false;
+  }
+
+  async createSlot() {
+    this.adminBookingError = '';
+    if (!this.newSlot.date) {
+      this.adminBookingError = 'Pick a date to publish.';
+      return;
+    }
+    const response = await fetch(`${this.api}/admin/booking/slots`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.adminToken}` },
+      body: JSON.stringify({
+        service: this.newSlot.service,
+        date: this.newSlot.date,
+        // The form takes whole dollars; the API works in cents throughout.
+        sessionFee: Math.round(Number(this.newSlot.sessionFee) * 100),
+        approxDurationMinutes: Number(this.newSlot.approxDurationMinutes) || 0,
+        location: this.newSlot.location
+      })
+    });
+    const body = await response.json();
+    if (!response.ok) {
+      this.adminBookingError = String(body?.error || 'Could not publish that date.');
+      return;
+    }
+    this.newSlot.date = '';
+    await this.loadAdminBookings();
+    this.bookingSlots = [];
+  }
+
+  async removeSlot(slot: any) {
+    if (!await this.requestConfirmation(`Remove ${slot.date} from availability?`, 'Remove date')) return;
+    const response = await fetch(`${this.api}/admin/booking/slots/${encodeURIComponent(slot.id)}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${this.adminToken}` }
+    });
+    if (!response.ok) {
+      this.adminBookingError = String((await response.json())?.error || 'Could not remove that date.');
+      return;
+    }
+    await this.loadAdminBookings();
+    this.bookingSlots = [];
+  }
+
+  async saveAgreedTime(booking: any, agreedTime: string) {
+    const response = await fetch(`${this.api}/admin/bookings/${encodeURIComponent(booking.id)}/time`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.adminToken}` },
+      body: JSON.stringify({ agreedTime })
+    });
+    if (response.ok) await this.loadAdminBookings();
+  }
+
+  async cancelBooking(booking: any) {
+    const refundNote = booking.refundable
+      ? 'The client is still inside the refund window, so the deposit should be refunded in Stripe.'
+      : 'The refund window has passed, so the deposit is retained.';
+    if (!await this.requestConfirmation(`Cancel ${booking.name}'s booking on ${booking.date}? ${refundNote}`, 'Cancel booking')) return;
+    const response = await fetch(`${this.api}/admin/bookings/${encodeURIComponent(booking.id)}/cancel`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${this.adminToken}` }
+    });
+    if (!response.ok) {
+      this.adminBookingError = 'Could not cancel that booking.';
+      return;
+    }
+    await this.loadAdminBookings();
+    this.bookingSlots = [];
+  }
+
+  formatMoney(cents: number): string {
+    return `$${((Number(cents) || 0) / 100).toFixed(2)}`;
+  }
+
   pickMedia(event: Event) {
     const file = (event.target as HTMLInputElement).files?.[0];
     if (!file) return;
@@ -912,6 +1093,11 @@ export class AppComponent implements OnInit {
             return {
               quantity: item.quantity,
               orderType: item.orderType,
+              // Fulfilment needs the size to print. A bundled digital copy is
+              // already its own cart line (see addToCart), so this line never
+              // carries one itself.
+              printSize: item.printSize || '',
+              includeDigitalCopy: false,
               preview: {
                 sku: item.sku,
                 title: item.title,

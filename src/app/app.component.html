@@ -3,6 +3,7 @@
   <nav [class.open]="menuOpen">
     <a [class.active]="activeSection === 'products'" (click)="activeSection = 'products'; menuOpen = false">Catalog</a>
     <a [class.active]="activeSection === 'services'" (click)="activeSection = 'services'; menuOpen = false">Services</a>
+    <a [class.active]="activeSection === 'booking'" (click)="openBooking()">Book</a>
     <a [class.active]="activeSection === 'about'" (click)="activeSection = 'about'; menuOpen = false">About</a>
   </nav>
   <button class="admin-quick" type="button" (click)="adminOpen ? closeAdmin() : openAdmin()">{{ adminToken ? 'Manage products' : 'Admin login' }}</button>
@@ -73,6 +74,17 @@
     (serviceChange)="activeService = $event"
     (contactClick)="activeSection = 'contact'"></app-services>
 
+  <app-booking
+    *ngIf="activeSection === 'booking'"
+    [slots]="bookingSlots"
+    [loading]="bookingLoading"
+    [submitting]="bookingSubmitting"
+    [error]="bookingError"
+    [refundPolicy]="bookingPolicy"
+    [holdMinutes]="bookingHoldMinutes"
+    (book)="onBookSlot($event)"
+    (enquire)="activeSection = 'contact'"></app-booking>
+
   <app-about *ngIf="activeSection === 'about'" (contactClick)="activeSection = 'contact'"></app-about>
 
   <section id="contact" class="contact" *ngIf="activeSection === 'contact'"><p class="eyebrow">LET'S MAKE SOMETHING</p><h2>Have a story in mind?<br><em>Let's talk.</em></h2><a href="mailto:hello@demori.studio" class="contact-link">hello&#64;demori.studio <span>↗</span></a></section>
@@ -118,6 +130,7 @@
       <div class="admin-tabs" role="tablist" aria-label="Admin sections">
         <button type="button" [class.active]="adminView === 'products'" (click)="setAdminView('products')">Products</button>
         <button type="button" [class.active]="adminView === 'inquiries'" (click)="setAdminView('inquiries')">Inquiries <span>{{ inquiries.length }}</span></button>
+        <button type="button" [class.active]="adminView === 'bookings'" (click)="setAdminView('bookings')">Bookings <span>{{ adminBookings.length }}</span></button>
       </div>
 
       <section class="admin-products" *ngIf="adminView === 'products'">
@@ -165,6 +178,63 @@
         </div>
 
         <p class="admin-inquiries-empty" *ngIf="!inquiriesLoading && !filteredInquiries.length">No inquiries match your current filters.</p>
+      </section>
+
+      <section class="admin-inquiries" *ngIf="adminView === 'bookings'">
+        <div class="admin-inquiries-tools">
+          <label>Service<input type="text" [(ngModel)]="newSlot.service" name="slotService" placeholder="Aerial"></label>
+          <label>Date<input type="date" [(ngModel)]="newSlot.date" name="slotDate"></label>
+          <label>Session fee ($)<input type="number" min="1" [(ngModel)]="newSlot.sessionFee" name="slotFee"></label>
+          <label>Approx minutes<input type="number" min="0" [(ngModel)]="newSlot.approxDurationMinutes" name="slotDuration"></label>
+          <label>Location<input type="text" [(ngModel)]="newSlot.location" name="slotLocation" placeholder="Optional"></label>
+          <button type="button" class="underlined" (click)="createSlot()">Publish date +</button>
+          <button type="button" class="underlined" (click)="setAdminView('bookings')">Refresh <span>&#8635;</span></button>
+        </div>
+        <p class="error" *ngIf="adminBookingError">{{ adminBookingError }}</p>
+        <p class="admin-inquiries-meta" *ngIf="adminBookingLoading">Loading bookings...</p>
+
+        <p class="admin-inquiries-meta" *ngIf="!adminBookingLoading">Published dates ({{ adminSlots.length }})</p>
+        <div class="admin-inquiries-list" *ngIf="!adminBookingLoading && adminSlots.length">
+          <article class="inquiry-card" *ngFor="let slot of adminSlots">
+            <div class="inquiry-card-head">
+              <h4>{{ slot.date }} &middot; {{ slot.service }}</h4>
+              <p>{{ slot.status }}</p>
+            </div>
+            <p class="inquiry-card-contact">
+              {{ formatMoney(slot.sessionFee) }} session &middot; {{ formatMoney(slot.sessionFee / 4) }} deposit
+              <span *ngIf="slot.location"> &middot; {{ slot.location }}</span>
+            </p>
+            <div class="inquiry-card-foot">
+              <button type="button" class="underlined" (click)="removeSlot(slot)" *ngIf="slot.status !== 'booked'">Remove date</button>
+              <span class="inquiry-delivery" *ngIf="slot.status === 'booked'">Booked</span>
+            </div>
+          </article>
+        </div>
+
+        <p class="admin-inquiries-meta" *ngIf="!adminBookingLoading">Bookings ({{ adminBookings.length }})</p>
+        <div class="admin-inquiries-list" *ngIf="!adminBookingLoading && adminBookings.length">
+          <article class="inquiry-card" *ngFor="let booking of adminBookings">
+            <div class="inquiry-card-head">
+              <h4>{{ booking.name }} &middot; {{ booking.date }}</h4>
+              <p>{{ booking.status }}</p>
+            </div>
+            <p class="inquiry-card-contact">
+              <a [href]="'mailto:' + booking.email">{{ booking.email }}</a>
+              <span *ngIf="booking.phone"> &middot; {{ booking.phone }}</span> &middot; {{ booking.service }}
+            </p>
+            <p class="inquiry-card-message">
+              Deposit {{ formatMoney(booking.deposit) }} paid &middot; balance {{ formatMoney(booking.balanceDue) }} due.
+              <span *ngIf="booking.preferredTime">Prefers {{ booking.preferredTime }}.</span>
+              <span *ngIf="booking.notes"> {{ booking.notes }}</span>
+            </p>
+            <div class="inquiry-card-foot" *ngIf="booking.status === 'confirmed'">
+              <label>Agreed time<input type="text" [ngModel]="booking.agreedTime" (ngModelChange)="saveAgreedTime(booking, $event)" [name]="'agreed-' + booking.id" placeholder="07:30"></label>
+              <span class="inquiry-delivery" [class.ok]="booking.refundable">{{ booking.refundable ? 'Refundable' : 'Past refund window' }}</span>
+              <button type="button" class="underlined" (click)="cancelBooking(booking)">Cancel booking</button>
+            </div>
+          </article>
+        </div>
+        <p class="admin-inquiries-empty" *ngIf="!adminBookingLoading && !adminBookings.length">No bookings yet.</p>
       </section>
     </div>
   </aside>

@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, Input, Output, EventEmitter, OnChanges, SimpleChanges, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { getApiBaseUrl } from '../media-url';
 
 export type ServiceTier = { label: string; price: string; details: string };
 export type ServiceAddon = { label: string; price: string; details: string };
@@ -35,7 +36,7 @@ export class ServicesComponent implements OnChanges {
   submitting = false;
   formSuccess = '';
   formError = '';
-  private readonly api = 'http://localhost:3000/api';
+  private readonly api = getApiBaseUrl();
   private aerialVideoIndex = 0;
 
   ngOnChanges(changes: SimpleChanges) {

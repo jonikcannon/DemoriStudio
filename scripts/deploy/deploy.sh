@@ -5,7 +5,9 @@ set -euo pipefail
 # Run on server as app user from anywhere:
 #   bash /var/www/demori/app/scripts/deploy/deploy.sh
 
-APP_DIR="/var/www/demori/app"
+APP_DIR="${APP_DIR:-/var/www/demori/app}"
+DEPLOY_FRONTEND="${DEPLOY_FRONTEND:-true}"
+RELOAD_NGINX="${RELOAD_NGINX:-true}"
 
 if [[ ! -d "${APP_DIR}" ]]; then
   echo "App directory not found: ${APP_DIR}"
@@ -21,13 +23,35 @@ git pull --ff-only
 echo "==> Installing dependencies"
 npm ci
 
-echo "==> Building frontend"
-npm run build
+if [[ "${DEPLOY_FRONTEND}" == "true" ]]; then
+  echo "==> Building frontend"
+  npm run build
+fi
 
 echo "==> Restarting API"
 pm2 reload demori-api --update-env
 
-echo "==> Reloading Nginx"
-sudo systemctl reload nginx
+if [[ "${RELOAD_NGINX}" == "true" ]]; then
+  echo "==> Reloading Nginx"
+  sudo systemctl reload nginx
+fi
+
+# A reload that leaves the API down should fail the deploy rather than pass
+# quietly. pm2 reports the process as online before the app has finished
+# binding, so poll the endpoint instead of trusting pm2's status.
+echo "==> Verifying the API responds"
+for attempt in $(seq 1 15); do
+  CODE="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/products || true)"
+  if [[ "${CODE}" == "200" ]]; then
+    echo "API healthy (HTTP ${CODE}) after ${attempt} attempt(s)"
+    break
+  fi
+  if [[ "${attempt}" == "15" ]]; then
+    echo "API did not return 200 after the deploy (last: HTTP ${CODE:-no response})"
+    pm2 logs demori-api --lines 40 --nostream || true
+    exit 1
+  fi
+  sleep 2
+done
 
 echo "Deploy complete"

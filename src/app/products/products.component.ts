@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, Input, OnChanges, Output, SimpleChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 
@@ -55,7 +55,7 @@ export type ProductEditPayload = {
   templateUrl: './products.component.html',
   styleUrl: './products.component.css'
 })
-export class ProductsComponent {
+export class ProductsComponent implements OnChanges {
   @Input() products: Product[] = [];
   @Input() categoryOptions: string[] = [];
   @Input() loading = false;
@@ -69,6 +69,78 @@ export class ProductsComponent {
   readonly printSizeOptions = PRINT_SIZE_OPTIONS;
   private readonly selectedPrintSizeByProduct: Record<string, PrintSizeOption['size']> = {};
   private readonly selectedPrintQuantityByProduct: Record<string, number> = {};
+
+  // Paging keeps the DOM (and the media requests behind it) to one screenful.
+  // The full catalogue is ~150 cards, each with a full-size image or a video.
+  @Input() pageSize = 12;
+  currentPage = 1;
+  private productsSignature = '';
+  private pagedSource: Product[] | null = null;
+  private pagedKey = '';
+  private pagedCache: Product[] = [];
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if (!changes['products']) return;
+    // Jump back to the first page when the listing itself changes (category
+    // filter, admin edit or delete) rather than stranding the reader on a page
+    // that now holds different items.
+    const signature = `${this.products.length}:${this.products[0]?.id || ''}:${this.products[this.products.length - 1]?.id || ''}`;
+    if (signature !== this.productsSignature) {
+      this.productsSignature = signature;
+      this.currentPage = 1;
+      this.editingProductId = '';
+    }
+    this.currentPage = Math.min(this.currentPage, this.totalPages);
+  }
+
+  get totalPages(): number {
+    return Math.max(1, Math.ceil(this.products.length / this.pageSize));
+  }
+
+  get pagedProducts(): Product[] {
+    const key = `${this.currentPage}|${this.pageSize}`;
+    if (this.pagedSource === this.products && this.pagedKey === key) return this.pagedCache;
+    const start = (this.currentPage - 1) * this.pageSize;
+    this.pagedSource = this.products;
+    this.pagedKey = key;
+    this.pagedCache = this.products.slice(start, start + this.pageSize);
+    return this.pagedCache;
+  }
+
+  get rangeStart(): number {
+    return this.products.length ? (this.currentPage - 1) * this.pageSize + 1 : 0;
+  }
+
+  get rangeEnd(): number {
+    return Math.min(this.currentPage * this.pageSize, this.products.length);
+  }
+
+  // 1 ... 4 5 6 ... 13 -- keeps the control a fixed width however many pages exist.
+  get pageNumbers(): Array<number | '...'> {
+    const total = this.totalPages;
+    if (total <= 7) return Array.from({ length: total }, (_, index) => index + 1);
+    const pages: Array<number | '...'> = [1];
+    const first = Math.max(2, this.currentPage - 1);
+    const last = Math.min(total - 1, this.currentPage + 1);
+    if (first > 2) pages.push('...');
+    for (let page = first; page <= last; page++) pages.push(page);
+    if (last < total - 1) pages.push('...');
+    pages.push(total);
+    return pages;
+  }
+
+  goToPage(page: number | '...'): void {
+    if (page === '...') return;
+    const target = Math.min(Math.max(1, page), this.totalPages);
+    if (target === this.currentPage) return;
+    this.currentPage = target;
+    this.editingProductId = '';
+    document.getElementById('products')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  trackByPage(_: number, page: number | '...') {
+    return page;
+  }
 
   editingProductId = '';
   editModel: ProductEditPayload = {

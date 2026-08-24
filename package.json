@@ -11,15 +11,18 @@
     "manifest": "node scripts/generate-gallery-manifest.js",
     "media": "npm run setup:media && npm run manifest",
     "prestart": "npm run media",
-    "start": "ng serve",
-    "prestrict": "npm run media",
-    "strict": "concurrently -k -n api,web -c cyan,magenta -p \"[{name}]\" \"node server/server.js\" \"ng serve\"",
+    "start": "concurrently -k -n api,web -c cyan,magenta -p \"[{name}]\" \"node server/server.js\" \"ng serve\"",
+    "start:web": "ng serve",
+    "strict": "npm start",
     "prebuild": "npm run media",
     "build": "ng build",
     "test": "ng test",
     "api": "node server/server.js",
     "media:sync": "node scripts/sync-media-to-r2.js",
-    "migrate:drive-media": "node scripts/migrate-uploads-to-drive.js"
+    "migrate:drive-media": "node scripts/migrate-uploads-to-drive.js",
+    "watermark": "node scripts/watermark-media.js",
+    "watermark:dry": "node scripts/watermark-media.js --dry-run",
+    "deploy": "bash scripts/deploy/deploy-remote.sh"
   },
   "dependencies": {
     "@angular/animations": "^18.2.0",
@@ -28,6 +31,8 @@
     "@angular/core": "^18.2.0",
     "@angular/forms": "^18.2.0",
     "@angular/platform-browser": "^18.2.0",
+    "@aws-sdk/client-s3": "^3.1112.0",
+    "@aws-sdk/lib-storage": "^3.1112.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
@@ -38,6 +43,7 @@
     "jsonwebtoken": "^9.0.2",
     "nodemailer": "^9.0.3",
     "rxjs": "~7.8.1",
+    "sharp": "^0.35.3",
     "stripe": "^17.0.0",
     "tslib": "^2.3.0",
     "zone.js": "~0.14.10"
@@ -46,8 +52,6 @@
     "@angular-devkit/build-angular": "^18.2.0",
     "@angular/cli": "^18.2.0",
     "@angular/compiler-cli": "^18.2.0",
-    "@aws-sdk/client-s3": "^3.1112.0",
-    "@aws-sdk/lib-storage": "^3.1112.0",
     "concurrently": "^10.0.5",
     "typescript": "~5.5.4"
   }

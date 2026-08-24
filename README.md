@@ -9,15 +9,21 @@
    and served by the bucket. Without R2, provision `storage/media/` by hand; the
    photos are not in git, so the gallery renders empty until you copy them in. See
    [Gallery media](#gallery-media) below.
-4. Run `npm run strict` — starts the API and the dev server together.
+4. Run `npm start` — starts the API and the dev server together.
 
-In R2 mode the browser fetches media straight from the bucket, so only the manifest
-comes from the API. Without R2 both processes are required: the API serves gallery
-media at `/assets/gallery/` and the dev server proxies that path to it.
+**The API is always required, even in R2 mode.** The shop catalogue is built from
+the gallery manifest, and the manifest is served by the API at
+`/assets/gallery/gallery-manifest.json` — it lives in `storage/media/`, outside
+`src/`, so the Angular build never bundles it. Run the dev server on its own and
+that fetch fails, leaving the gallery empty and the shop showing "No digital
+products are available right now." In R2 mode the *media bytes* come straight from
+the bucket, but the manifest listing them still comes from the API. Without R2 the
+API also serves the media itself at `/assets/gallery/`.
 
-`npm run strict` runs them concurrently with tagged `[api]` / `[web]` output, and if
-either one exits it shuts down the other, so you never end up with a half-running
-stack. To run them in separate terminals instead, use `npm run api` and `npm start`.
+`npm start` runs both concurrently with tagged `[api]` / `[web]` output, and if
+either exits it shuts down the other, so you never end up with a half-running
+stack. `npm run strict` is kept as an alias. To run them in separate terminals
+instead, use `npm run api` and `npm run start:web`.
 
 ## Where media lives
 
@@ -139,7 +145,58 @@ host with no local copy of the photos the move happens in the bucket alone.
 For the initial bulk upload, [rclone](https://rclone.org/s3/#cloudflare-r2) is worth
 considering over `media:sync` — it parallelises and resumes better across several GB.
 
+## Watermarking and masters
+
+The public gallery is watermarked; the clean masters a buyer receives live
+separately in the bucket under `originals/`.
+
+```
+npm run watermark:dry     # report what would change, write nothing
+npm run watermark         # preserve masters, then stamp the public copies
+```
+
+For every gallery image the script copies the untouched file to
+`originals/<category>/<file>` **first**, then overwrites
+`assets/gallery/<category>/<file>` with a watermarked copy at full resolution.
+Doing it in that order means an interrupted run can never leave a watermarked
+file as the only surviving version. Public object keys never change, so the
+manifest, product records and cached URLs keep working.
+
+It is idempotent: a stamped object is tagged in its metadata and skipped, so a
+re-run resumes rather than double-stamping.
+
+`/api/download/:token` serves the master from `originals/`, falling back to the
+gallery copy when no master exists yet — so purchases keep working before, during
+and after the migration.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `WATERMARK_TEXT` | `DEMORI STUDIO` | The mark itself |
+| `WATERMARK_STYLE` | `corner` | `corner` (discreet, bottom right) or `tiled` (repeated diagonally, far harder to crop off) |
+
+Videos are not watermarked. The 29 clips would need a full ffmpeg re-encode of
+several GB, which is a separate operation with its own risks.
+
 ## Production notes
+
+### Hosting
+
+The site and the API run together on a single Ubuntu server: Nginx serves the
+built Angular app from `dist/demori-photos` and proxies `/api/` to
+`server/server.js` (PM2, port 3000). Because both share one origin, the browser
+calls `/api` relatively and no CORS configuration is involved. See
+[scripts/deploy/README.md](scripts/deploy/README.md) for the bootstrap and deploy
+steps.
+
+Only set `API_BASE_URL` if you deliberately split the API onto a different origin
+than the site; leaving it unset is correct for the single-server setup above.
+
+Deploys run through GitHub Actions on a self-hosted runner installed on the
+server itself, because the box sits on a private LAN that GitHub's hosted
+runners cannot reach. `npm run deploy` deploys from any workstation on the same
+network. Both paths run the same `scripts/deploy/deploy.sh` and both verify the
+API responds before reporting success. See
+[.github/DEPLOYMENT.md](.github/DEPLOYMENT.md).
 
 - **Admin:** Authentication happens only on the server. Set `ADMIN_EMAIL`, a bcrypt `ADMIN_PASSWORD_HASH`, and a long random `JWT_SECRET`.
 - **Contact email delivery:** Configure `CONTACT_TO_EMAIL`, `CONTACT_FROM_EMAIL`, and SMTP settings (`SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`) so contact inquiries are emailed in real time.

@@ -35,6 +35,260 @@ if (!fs.existsSync(galleryDir)) fs.mkdirSync(galleryDir, { recursive: true });
 const galleryManifestPath = path.join(galleryDir, 'gallery-manifest.json');
 
 const inquiriesLogFile = path.join(inquiriesDir, 'contact-inquiries.jsonl');
+
+const orderStore = require('./orders');
+const fulfilment = require('./fulfilment');
+const bookingStore = require('./booking');
+orderStore.ensureStore();
+bookingStore.ensureStore();
+
+// Clean, unwatermarked masters live under `originals/`; the public gallery keeps
+// serving `assets/gallery/`. Until the watermarking pass has run there is no
+// `originals/` copy yet, so delivery falls back to the gallery key -- that keeps
+// purchases working during the migration instead of 404ing.
+const ORIGINALS_PREFIX = 'originals/';
+
+function toOriginalKey(galleryKey) {
+  return String(galleryKey || '').replace(/^assets\/gallery\//, ORIGINALS_PREFIX);
+}
+
+// Download links are signed rather than guessable: the token names the order and
+// the line item, so a link cannot be edited to reach a file that was not bought.
+function buildDownloadToken(orderId, itemIndex) {
+  return jwt.sign({ orderId, itemIndex }, process.env.JWT_SECRET, {
+    expiresIn: String(process.env.DOWNLOAD_TOKEN_TTL || '30d').trim() || '30d',
+    issuer: 'demori-api',
+    audience: 'demori-download'
+  });
+}
+
+function buildDownloadUrl(orderId, itemIndex) {
+  return `${origin.replace(/\/$/, '')}/api/download/${encodeURIComponent(buildDownloadToken(orderId, itemIndex))}`;
+}
+
+// Resolve the object the buyer is owed: the master if it exists, else the
+// gallery copy. Returns null when neither is present.
+async function fetchOriginalObject(galleryKey) {
+  if (!r2Client) return null;
+  const { GetObjectCommand } = require('@aws-sdk/client-s3');
+  for (const key of [toOriginalKey(galleryKey), galleryKey]) {
+    if (!key) continue;
+    try {
+      const object = await r2Client.send(new GetObjectCommand({ Bucket: r2Config.bucket, Key: key }));
+      return { key, body: object.Body, contentType: object.ContentType, contentLength: object.ContentLength };
+    } catch (error) {
+      if (error?.name !== 'NoSuchKey' && error?.$metadata?.httpStatusCode !== 404) {
+        console.error(`R2 read failed for ${key}:`, error?.message || error);
+      }
+    }
+  }
+  return null;
+}
+
+// Everything fulfilment needs, captured while the product is still in hand.
+function buildOrderItem(product, quantity, entry = {}) {
+  const galleryKey = toGalleryRelativeImage(product.image);
+  const printSize = String(entry.printSize || '').trim();
+  const orderType = String(entry.orderType || '').trim();
+  // Either signal marks the line as physical. Relying on printSize alone would
+  // misfile a print sale as digital if the size ever failed to reach us.
+  const isPrint = Boolean(printSize) || orderType === 'print';
+  // A print always ships; a digital file is delivered when it was bought on its
+  // own or explicitly bundled with the print.
+  const deliverDigital = !isPrint || entry.includeDigitalCopy === true || orderType === 'digital';
+  return {
+    productId: String(product.id || ''),
+    sku: String(product.sku || ''),
+    title: String(product.title || ''),
+    mediaType: product.mediaType === 'video' ? 'video' : 'image',
+    imageKey: galleryKey,
+    quantity,
+    unitAmount: Number(product.price) || 0,
+    orderType,
+    isPrint,
+    printSize: printSize || '',
+    printUnitPrice: Number(entry.printUnitPrice) || 0,
+    deliverDigital,
+    downloads: 0
+  };
+}
+
+async function sendOrderEmails(order) {
+  const transporter = getMailer();
+  const from = String(process.env.CONTACT_FROM_EMAIL || process.env.SMTP_USER || '').trim();
+  const studio = String(process.env.CONTACT_TO_EMAIL || process.env.ADMIN_EMAIL || '').trim();
+  if (!transporter || !from) return { customer: false, studio: false };
+
+  const digitalItems = order.items
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => item.deliverDigital && item.imageKey);
+
+  let customerSent = false;
+  if (order.email && digitalItems.length) {
+    const links = digitalItems.map(({ item, index }) => `${item.title}\n${buildDownloadUrl(order.id, index)}`);
+    await transporter.sendMail({
+      from,
+      to: order.email,
+      subject: 'Your Demori Studio download',
+      text: [
+        'Thank you for your purchase.',
+        '',
+        `Order: ${order.id}`,
+        '',
+        'Your files are ready. These links are personal to this order:',
+        '',
+        ...links,
+        '',
+        `Links stay valid for ${String(process.env.DOWNLOAD_TOKEN_TTL || '30d')}. Reply to this email if you need them reissued.`
+      ].join('\n')
+    });
+    customerSent = true;
+  }
+
+  let studioSent = false;
+  if (studio) {
+    const printItems = fulfilment.selectPrintItems(order);
+    await transporter.sendMail({
+      from,
+      to: studio,
+      replyTo: order.email || undefined,
+      subject: `[Demori Studio] Paid order ${order.id.slice(0, 8)}${printItems.length ? ' (print)' : ''}`,
+      text: [
+        `Order: ${order.id}`,
+        `Customer: ${order.email || 'not supplied'}`,
+        `Total: $${(order.amountTotal / 100).toFixed(2)} ${String(order.currency || 'usd').toUpperCase()}`,
+        `Paid: ${order.paidAt}`,
+        '',
+        'Items:',
+        ...order.items.map(item => `  - ${item.quantity} x ${item.title}${item.printSize ? ` (print ${item.printSize})` : ' (digital)'}`),
+        ...(printItems.length ? ['', 'PRINT JOB', fulfilment.buildJobSummary(order, printItems)] : [])
+      ].join('\n')
+    });
+    studioSent = true;
+  }
+
+  return { customer: customerSent, studio: studioSent };
+}
+
+function formatMoney(cents, currency = 'usd') {
+  return `$${((Number(cents) || 0) / 100).toFixed(2)} ${String(currency).toUpperCase()}`;
+}
+
+async function sendBookingEmails(booking) {
+  const transporter = getMailer();
+  const from = String(process.env.CONTACT_FROM_EMAIL || process.env.SMTP_USER || '').trim();
+  const studio = String(process.env.CONTACT_TO_EMAIL || process.env.ADMIN_EMAIL || '').trim();
+  if (!transporter || !from) return false;
+
+  const lines = [
+    `Service: ${booking.service}`,
+    `Date: ${booking.date}`,
+    `Preferred time: ${booking.preferredTime || 'no preference given'}`,
+    booking.location ? `Location: ${booking.location}` : '',
+    `Session fee: ${formatMoney(booking.sessionFee)}`,
+    `Deposit paid: ${formatMoney(booking.deposit)}`,
+    `Balance due on the day: ${formatMoney(booking.balanceDue)}`
+  ].filter(Boolean);
+
+  if (booking.email) {
+    await transporter.sendMail({
+      from,
+      to: booking.email,
+      replyTo: studio || undefined,
+      subject: `Your Demori Studio booking on ${booking.date}`,
+      text: [
+        `Thank you ${booking.name || ''}`.trim() + ',',
+        '',
+        'Your date is reserved. We will be in touch to agree the exact start time.',
+        '',
+        ...lines,
+        '',
+        `Reference: ${booking.id}`,
+        '',
+        booking.refundPolicy
+      ].join('\n')
+    });
+  }
+
+  if (studio) {
+    await transporter.sendMail({
+      from,
+      to: studio,
+      replyTo: booking.email || undefined,
+      subject: `[Demori Studio] Booking confirmed - ${booking.service} on ${booking.date}`,
+      text: [
+        `Booking: ${booking.id}`,
+        `Client: ${booking.name || 'not supplied'} <${booking.email || 'no email'}>`,
+        booking.phone ? `Phone: ${booking.phone}` : '',
+        '',
+        ...lines,
+        '',
+        booking.notes ? `Notes:\n${booking.notes}` : 'No notes supplied.',
+        '',
+        'ACTION: agree a start time with the client.'
+      ].filter(Boolean).join('\n')
+    });
+  }
+
+  return Boolean(booking.email);
+}
+
+// Runs after payment. Split so a webhook retry can re-run only the part that
+// has not succeeded yet.
+async function fulfilOrder(order) {
+  let current = order;
+
+  if (current.kind === 'booking') {
+    const bookingId = String(current.metadata?.bookingId || '');
+    // confirmBooking is idempotent, so a webhook retry cannot double-book.
+    const confirmed = bookingStore.confirmBooking(bookingId);
+    if (confirmed) {
+      try {
+        const sent = await sendBookingEmails(confirmed);
+        orderStore.setDelivery(current.id, {
+          status: sent ? orderStore.FULFILMENT.FULFILLED : orderStore.FULFILMENT.FAILED,
+          sentAt: sent ? new Date().toISOString() : '',
+          error: sent ? '' : 'No mailer configured or no client email on the booking.'
+        });
+      } catch (error) {
+        console.error('Booking confirmation email failed:', error?.message || error);
+        orderStore.setDelivery(current.id, { status: orderStore.FULFILMENT.FAILED, error: String(error?.message || error) });
+      }
+    }
+    return orderStore.findOrderById(current.id) || current;
+  }
+
+  if (current.fulfilment.status === orderStore.FULFILMENT.PENDING) {
+    const result = await fulfilment.submitPrintJob(current);
+    if (result) {
+      current = orderStore.setFulfilment(current.id, {
+        status: result.status === 'failed' ? orderStore.FULFILMENT.FAILED : orderStore.FULFILMENT.FULFILLED,
+        provider: result.provider,
+        reference: result.reference,
+        error: result.error
+      }) || current;
+    }
+  }
+
+  if (current.delivery.status === orderStore.FULFILMENT.PENDING) {
+    try {
+      const sent = await sendOrderEmails(current);
+      current = orderStore.setDelivery(current.id, {
+        status: sent.customer ? orderStore.FULFILMENT.FULFILLED : orderStore.FULFILMENT.FAILED,
+        sentAt: sent.customer ? new Date().toISOString() : '',
+        error: sent.customer ? '' : 'No mailer configured or no customer email on the order.'
+      }) || current;
+    } catch (error) {
+      console.error('Order delivery email failed:', error?.message || error);
+      orderStore.setDelivery(current.id, { status: orderStore.FULFILMENT.FAILED, error: String(error?.message || error) });
+    }
+  } else if (current.delivery.status === orderStore.FULFILMENT.NONE) {
+    // Physical-only order: still tell the studio it sold.
+    try { await sendOrderEmails(current); } catch (error) { console.error('Studio notification failed:', error?.message || error); }
+  }
+
+  return current;
+}
 const productsFile = path.join(productsDir, 'products.json');
 let products = [];
 let mailTransporter;
@@ -323,16 +577,21 @@ function buildCheckoutDescription(product) {
 function buildCheckoutLineItem(product, quantity) {
   const normalizedImage = String(product?.image || '').trim();
   const canUseStripeImage = normalizedImage && !normalizedImage.startsWith('/api/media/') && !normalizedImage.startsWith('api/media/');
+  const description = buildCheckoutDescription(product);
+  const productData = {
+    name: product.title,
+    images: product.mediaType === 'image' && canUseStripeImage ? [toAbsoluteImage(product.image)] : []
+  };
+  // Stripe treats an empty string as "unset this field" and rejects the whole
+  // request. Gallery-derived products carry no description, so the key has to be
+  // omitted entirely rather than sent blank.
+  if (description) productData.description = description;
   return {
     quantity,
     price_data: {
       currency: 'usd',
       unit_amount: product.price,
-      product_data: {
-        name: product.title,
-        description: buildCheckoutDescription(product),
-        images: product.mediaType === 'image' && canUseStripeImage ? [toAbsoluteImage(product.image)] : []
-      }
+      product_data: productData
     }
   };
 }
@@ -866,15 +1125,28 @@ app.post('/api/checkout', async (req, res) => {
   if (!product) return res.status(404).json({ error: 'Product unavailable.' });
   if (!stripe) return res.status(503).json({ error: 'Stripe is not configured yet.' });
 
-  const session = await stripe.checkout.sessions.create({
-    mode: 'payment',
-    payment_method_types: ['card'],
-    line_items: [buildCheckoutLineItem(product, 1)],
-    metadata: { productId: product.id },
-    success_url: `${origin}/?checkout=success`,
-    cancel_url: `${origin}/?checkout=cancel`
+  const order = orderStore.createPendingOrder({
+    kind: 'shop',
+    items: [buildOrderItem(product, 1, req.body || {})]
   });
 
+  let session;
+  try {
+    session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      payment_method_types: ['card'],
+      line_items: [buildCheckoutLineItem(product, 1)],
+      metadata: { orderId: order.id, productId: product.id },
+      client_reference_id: order.id,
+      success_url: `${origin}/?checkout=success`,
+      cancel_url: `${origin}/?checkout=cancel`
+    });
+  } catch (error) {
+    console.error('Stripe session failed:', error?.message || error);
+    return res.status(502).json({ error: 'Could not start checkout. Please try again.' });
+  }
+
+  orderStore.attachSession(order.id, session.id);
   res.json({ url: session.url });
 });
 
@@ -883,15 +1155,29 @@ app.post('/api/checkout/preview', async (req, res) => {
   const preview = resolvePreviewProduct(req.body?.preview);
   if (!preview) return res.status(400).json({ error: 'Preview product is invalid.' });
 
-  const session = await stripe.checkout.sessions.create({
-    mode: 'payment',
-    payment_method_types: ['card'],
-    line_items: [buildCheckoutLineItem(preview, 1)],
-    metadata: { previewSku: preview.sku || '', preview: 'true' },
-    success_url: `${origin}/?checkout=success`,
-    cancel_url: `${origin}/?checkout=cancel`
+  const order = orderStore.createPendingOrder({
+    kind: 'shop',
+    items: [buildOrderItem({ ...preview, id: '' }, 1, req.body?.preview || {})],
+    metadata: { preview: 'true' }
   });
 
+  let session;
+  try {
+    session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      payment_method_types: ['card'],
+      line_items: [buildCheckoutLineItem(preview, 1)],
+      metadata: { orderId: order.id, previewSku: preview.sku || '', preview: 'true' },
+      client_reference_id: order.id,
+      success_url: `${origin}/?checkout=success`,
+      cancel_url: `${origin}/?checkout=cancel`
+    });
+  } catch (error) {
+    console.error('Stripe session failed:', error?.message || error);
+    return res.status(502).json({ error: 'Could not start checkout. Please try again.' });
+  }
+
+  orderStore.attachSession(order.id, session.id);
   res.json({ url: session.url });
 });
 
@@ -907,6 +1193,7 @@ app.post('/api/checkout/cart', async (req, res) => {
   }
 
   const lineItems = [];
+  const orderItems = [];
   for (const entry of incomingItems) {
     const quantity = Math.max(1, Math.min(10, parseInt(entry?.quantity, 10) || 1));
 
@@ -914,6 +1201,7 @@ app.post('/api/checkout/cart', async (req, res) => {
       const product = products.find(item => item.id === entry.productId && item.published);
       if (!product) return res.status(404).json({ error: 'One or more cart items are unavailable.' });
       lineItems.push(buildCheckoutLineItem(product, quantity));
+      orderItems.push(buildOrderItem(product, quantity, entry));
       continue;
     }
 
@@ -921,28 +1209,245 @@ app.post('/api/checkout/cart', async (req, res) => {
       const preview = resolvePreviewProduct(entry.preview);
       if (!preview) return res.status(400).json({ error: 'One or more preview items are invalid.' });
       lineItems.push(buildCheckoutLineItem(preview, quantity));
+      orderItems.push(buildOrderItem({ ...preview, id: '' }, quantity, entry));
       continue;
     }
 
     return res.status(400).json({ error: 'Cart item format is invalid.' });
   }
 
-  const session = await stripe.checkout.sessions.create({
+  const order = orderStore.createPendingOrder({
+    kind: 'shop',
+    email: requiresDigitalDelivery ? digitalDeliveryEmail : '',
+    items: orderItems,
+    metadata: { digitalEmailOptIn: String(digitalEmailOptIn) }
+  });
+
+  let session;
+  try {
+    session = await stripe.checkout.sessions.create({
     mode: 'payment',
     payment_method_types: ['card'],
     line_items: lineItems,
     metadata: {
+      orderId: order.id,
       cartSize: String(lineItems.length),
       hasDigitalItems: requiresDigitalDelivery ? 'true' : 'false',
       digitalDeliveryEmail: requiresDigitalDelivery ? digitalDeliveryEmail.slice(0, 200) : '',
       digitalEmailOptIn: requiresDigitalDelivery ? String(digitalEmailOptIn) : 'false'
     },
+    client_reference_id: order.id,
     customer_email: requiresDigitalDelivery ? digitalDeliveryEmail : undefined,
     success_url: `${origin}/?checkout=success`,
     cancel_url: `${origin}/?checkout=cancel`
-  });
+    });
+  } catch (error) {
+    console.error('Stripe session failed:', error?.message || error);
+    return res.status(502).json({ error: 'Could not start checkout. Please try again.' });
+  }
 
+  orderStore.attachSession(order.id, session.id);
   res.json({ url: session.url });
+});
+
+// ---------------------------------------------------------------- booking
+app.get('/api/booking/slots', (req, res) => {
+  res.json({
+    slots: bookingStore.listOpenSlots({
+      from: String(req.query.from || '').trim(),
+      to: String(req.query.to || '').trim(),
+      service: String(req.query.service || '').trim()
+    }),
+    depositRate: bookingStore.DEPOSIT_RATE,
+    refundPolicy: bookingStore.refundPolicyText(),
+    holdMinutes: bookingStore.holdMinutes()
+  });
+});
+
+// Holds the day, then opens a Stripe session for the deposit. The hold expires
+// on its own if the client never pays, so an abandoned checkout cannot park a
+// date indefinitely.
+app.post('/api/booking/hold', rateLimit({ windowMs: 900000, max: 20, message: { error: 'Too many booking attempts. Please try again shortly.' } }), async (req, res) => {
+  const name = String(req.body?.name || '').trim();
+  const email = String(req.body?.email || '').trim();
+  if (name.length < 2 || name.length > 120) return res.status(400).json({ error: 'Please enter your name.' });
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Please enter a valid email.' });
+  if (!stripe) return res.status(503).json({ error: 'Stripe is not configured yet.' });
+
+  const held = bookingStore.holdSlot(String(req.body?.slotId || ''), {
+    name,
+    email,
+    phone: String(req.body?.phone || '').trim(),
+    preferredTime: String(req.body?.preferredTime || '').trim(),
+    notes: String(req.body?.notes || '').trim()
+  });
+  if (held.error) return res.status(held.status || 400).json({ error: held.error });
+
+  const booking = held.booking;
+  const order = orderStore.createPendingOrder({
+    kind: 'booking',
+    email: booking.email,
+    items: [{
+      productId: '',
+      sku: `BOOKING-${booking.date}`,
+      title: `${booking.service} session deposit (${booking.date})`,
+      mediaType: 'image',
+      imageKey: '',
+      quantity: 1,
+      unitAmount: booking.deposit,
+      orderType: 'booking',
+      isPrint: false,
+      printSize: '',
+      printUnitPrice: 0,
+      deliverDigital: false,
+      downloads: 0
+    }],
+    metadata: { bookingId: booking.id, slotId: booking.slotId }
+  });
+  bookingStore.attachOrder(booking.id, order.id);
+
+  let session;
+  try {
+    session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      payment_method_types: ['card'],
+      line_items: [{
+        quantity: 1,
+        price_data: {
+          currency: 'usd',
+          unit_amount: booking.deposit,
+          product_data: {
+            name: `${booking.service} session deposit`,
+            description: `Reserves ${booking.date}. Balance of $${(booking.balanceDue / 100).toFixed(2)} due on the day. ${booking.refundPolicy}`
+          }
+        }
+      }],
+      metadata: { orderId: order.id, bookingId: booking.id },
+      client_reference_id: order.id,
+      customer_email: booking.email,
+      success_url: `${origin}/?booking=success`,
+      cancel_url: `${origin}/?booking=cancel`
+    });
+  } catch (error) {
+    console.error('Stripe booking session failed:', error?.message || error);
+    // Give the day straight back rather than leaving it held for the full window.
+    bookingStore.cancelBooking(booking.id);
+    return res.status(502).json({ error: 'Could not start checkout. Please try again.' });
+  }
+
+  orderStore.attachSession(order.id, session.id);
+  res.json({ url: session.url, bookingId: booking.id, deposit: booking.deposit, balanceDue: booking.balanceDue });
+});
+
+app.get('/api/admin/bookings', auth, (req, res) => {
+  bookingStore.releaseExpiredHolds();
+  const status = String(req.query.status || '').trim();
+  const all = bookingStore.readBookings()
+    .map(booking => ({ ...booking, refundable: bookingStore.isRefundable(booking) }))
+    .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)));
+  res.json({ bookings: !status || status === 'all' ? all : all.filter(booking => booking.status === status) });
+});
+
+app.get('/api/admin/booking/slots', auth, (req, res) => {
+  bookingStore.releaseExpiredHolds();
+  res.json({ slots: bookingStore.readSlots().sort((left, right) => String(left.date).localeCompare(String(right.date))) });
+});
+
+app.post('/api/admin/booking/slots', auth, (req, res) => {
+  const created = bookingStore.createSlot({
+    service: req.body?.service,
+    date: req.body?.date,
+    sessionFee: req.body?.sessionFee,
+    approxDurationMinutes: req.body?.approxDurationMinutes,
+    location: req.body?.location
+  });
+  if (created.error) return res.status(400).json({ error: created.error });
+  res.status(201).json({ slot: created.slot });
+});
+
+app.delete('/api/admin/booking/slots/:id', auth, (req, res) => {
+  const removed = bookingStore.deleteSlot(String(req.params.id || ''));
+  if (removed.error) return res.status(removed.status || 400).json({ error: removed.error });
+  res.json({ ok: true });
+});
+
+// Records the start time once studio and client have agreed it.
+app.patch('/api/admin/bookings/:id/time', auth, (req, res) => {
+  const updated = bookingStore.setAgreedTime(String(req.params.id || ''), req.body?.agreedTime);
+  if (!updated) return res.status(404).json({ error: 'Booking not found.' });
+  res.json({ booking: updated });
+});
+
+// Releases the day. Any deposit refund is issued by hand in Stripe -- `refundable`
+// reports whether the client is still inside the window they agreed to.
+app.post('/api/admin/bookings/:id/cancel', auth, (req, res) => {
+  const booking = bookingStore.findBooking(String(req.params.id || ''));
+  if (!booking) return res.status(404).json({ error: 'Booking not found.' });
+  const cancelled = bookingStore.cancelBooking(booking.id);
+  res.json({ booking: { ...cancelled, refundable: bookingStore.isRefundable(booking) } });
+});
+
+// Signed download of a purchased master. The token names the order and line
+// item, so it grants exactly one file and nothing else.
+app.get('/api/download/:token', async (req, res) => {
+  let decoded;
+  try {
+    decoded = jwt.verify(String(req.params.token || ''), process.env.JWT_SECRET, {
+      issuer: 'demori-api',
+      audience: 'demori-download'
+    });
+  } catch (error) {
+    const expired = error?.name === 'TokenExpiredError';
+    return res.status(expired ? 410 : 401).json({
+      error: expired ? 'This download link has expired. Contact us and we will reissue it.' : 'Invalid download link.'
+    });
+  }
+
+  const order = orderStore.findOrderById(String(decoded?.orderId || ''));
+  if (!order || order.status !== orderStore.STATUS.PAID) {
+    return res.status(404).json({ error: 'Order not found.' });
+  }
+
+  const itemIndex = Number(decoded?.itemIndex);
+  const item = Number.isInteger(itemIndex) ? order.items[itemIndex] : null;
+  if (!item || !item.deliverDigital || !item.imageKey) {
+    return res.status(404).json({ error: 'That item has no downloadable file.' });
+  }
+
+  const object = await fetchOriginalObject(item.imageKey);
+  if (!object) return res.status(404).json({ error: 'File unavailable. Please contact us.' });
+
+  const fileName = item.imageKey.split('/').pop() || 'demori-studio-download';
+  res.setHeader('Content-Type', object.contentType || 'application/octet-stream');
+  if (object.contentLength) res.setHeader('Content-Length', String(object.contentLength));
+  res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+  res.setHeader('Cache-Control', 'private, no-store');
+  orderStore.countDownload(order.id, itemIndex);
+
+  object.body.on('error', (error) => {
+    console.error('Download stream failed:', error?.message || error);
+    if (!res.headersSent) res.status(502).end();
+  });
+  object.body.pipe(res);
+});
+
+app.get('/api/admin/orders', auth, (req, res) => {
+  const status = String(req.query.status || '').trim();
+  const all = orderStore.readOrders().sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)));
+  const filtered = !status || status === 'all' ? all : all.filter(order => order.status === status);
+  res.json({ orders: filtered });
+});
+
+// Reissue delivery for an order the studio has checked -- covers a bounced
+// email, an expired link, or a delivery that failed while the mailer was down.
+app.post('/api/admin/orders/:id/resend', auth, async (req, res) => {
+  const order = orderStore.findOrderById(String(req.params.id || ''));
+  if (!order) return res.status(404).json({ error: 'Order not found.' });
+  if (order.status !== orderStore.STATUS.PAID) return res.status(400).json({ error: 'Order is not paid.' });
+
+  orderStore.setDelivery(order.id, { status: orderStore.FULFILMENT.PENDING, error: '' });
+  const updated = await fulfilOrder(orderStore.findOrderById(order.id));
+  res.json({ order: updated });
 });
 
 app.get('/api/media/:token', async (req, res) => {
@@ -1002,7 +1507,38 @@ async function stripeWebhook(req, res) {
   }
 
   if (event.type === 'checkout.session.completed') {
-    console.log('Paid order:', event.data.object.id, event.data.object.metadata.productId);
+    const session = event.data.object;
+    const orderId = String(session.metadata?.orderId || session.client_reference_id || '').trim();
+
+    if (!orderId) {
+      // Predates order records, or a session created outside this API. Nothing
+      // to deliver, but do not fail the webhook -- Stripe would retry forever.
+      console.warn('Paid session carried no order id:', session.id);
+      return res.json({ received: true });
+    }
+
+    // markPaid is idempotent; a retry returns null and we fall through to the
+    // stored order, so only the steps that have not succeeded are re-run.
+    let order = orderStore.markPaid(orderId, {
+      sessionId: session.id,
+      paymentIntentId: String(session.payment_intent || ''),
+      email: String(session.customer_details?.email || session.customer_email || ''),
+      amountTotal: Number(session.amount_total) || 0,
+      currency: String(session.currency || 'usd')
+    }) || orderStore.findOrderById(orderId);
+
+    if (!order) {
+      console.warn('Paid session referenced an unknown order:', orderId);
+      return res.json({ received: true });
+    }
+
+    try {
+      await fulfilOrder(order);
+    } catch (error) {
+      // Never 500 here: Stripe retries on non-2xx, and the order is already
+      // recorded as paid. The admin view shows what still needs attention.
+      console.error('Order fulfilment failed:', error?.message || error);
+    }
   }
 
   return res.json({ received: true });
@@ -1018,6 +1554,17 @@ console.log(`Products loaded: ${products.length}`);
 // server proxied gallery requests to a socket that was not open yet and logged
 // ECONNREFUSED for the first seconds of every boot -- or forever, if Drive was
 // unreachable.
+// Async handlers that reject would otherwise crash the process under Express 4.
+app.use((error, req, res, next) => {
+  console.error('Unhandled route error:', error?.message || error);
+  if (res.headersSent) return next(error);
+  res.status(500).json({ error: 'Unexpected server error.' });
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled promise rejection:', reason?.message || reason);
+});
+
 app.listen(port, () => console.log(`Demori API running on http://localhost:${port}`));
 console.log(isCdnEnabled()
   ? `Gallery media: CDN (${r2Config.cdnUrl})`
