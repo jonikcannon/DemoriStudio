@@ -58,15 +58,29 @@ mkdir -p "${APP_ROOT}"
 chown -R "${APP_USER}:${APP_USER}" "${APP_ROOT}"
 
 su - "${APP_USER}" -c "mkdir -p '${APP_DIR}' '${DATA_DIR}/storage/uploads' '${DATA_DIR}/storage/inquiries' '${DATA_DIR}/storage/media'"
-su - "${APP_USER}" -c "mkdir -p '${APP_DIR}/logs'"
 
+# The logs directory is deliberately created AFTER the checkout below. Creating
+# it here would leave ${APP_DIR} non-empty, and `git clone` refuses a non-empty
+# destination -- which made this script fail on every genuinely fresh box.
 if [[ ! -d "${APP_DIR}/.git" ]]; then
-  echo "==> Cloning repository"
-  su - "${APP_USER}" -c "git clone '${REPO_URL}' '${APP_DIR}'"
+  echo "==> Fetching repository into ${APP_DIR}"
+  # init+fetch+checkout rather than `git clone`, because the directory may
+  # already hold files (a previous partial run, or logs created early). Clone
+  # cannot target a non-empty directory; this can.
+  su - "${APP_USER}" -c "cd '${APP_DIR}' \
+    && git init -q \
+    && (git remote add origin '${REPO_URL}' 2>/dev/null || git remote set-url origin '${REPO_URL}') \
+    && git fetch -q --depth 1 origin HEAD \
+    && git checkout -q -f FETCH_HEAD \
+    && git branch -f master FETCH_HEAD \
+    && git symbolic-ref HEAD refs/heads/master \
+    && git branch --set-upstream-to=origin/master master 2>/dev/null || true"
 else
   echo "==> Repository exists, pulling latest"
-  su - "${APP_USER}" -c "cd '${APP_DIR}' && git pull --ff-only"
+  su - "${APP_USER}" -c "cd '${APP_DIR}' && git fetch -q origin && git reset --hard -q origin/master"
 fi
+
+su - "${APP_USER}" -c "mkdir -p '${APP_DIR}/logs'"
 
 echo "==> Installing dependencies and building"
 su - "${APP_USER}" -c "cd '${APP_DIR}' && npm ci && npm run build"
