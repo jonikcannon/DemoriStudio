@@ -30,14 +30,23 @@ if ! id -u "${APP_USER}" >/dev/null 2>&1; then
   exit 1
 fi
 
+# Ubuntu 24.04+ ships needrestart, which opens an interactive "restart these
+# services?" dialog after package installs. Under any non-tty stdout -- a pipe
+# to tee, a CI log -- it cannot claim the terminal and the whole apt run is
+# stopped by SIGTTOU, holding the dpkg lock indefinitely. Answering
+# automatically keeps the install unattended.
+export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a
+export NEEDRESTART_SUSPEND=1
+
 echo "==> Installing packages"
 apt-get update
-apt-get install -y nginx certbot python3-certbot-nginx git curl build-essential ufw fail2ban rsync
+apt-get install -y -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef nginx certbot python3-certbot-nginx git curl build-essential ufw fail2ban rsync
 
 if ! command -v node >/dev/null 2>&1 || ! node -v | grep -q '^v20'; then
   echo "==> Installing Node.js 20"
   curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-  apt-get install -y nodejs
+  apt-get install -y -o Dpkg::Options::=--force-confold nodejs
 fi
 
 if ! command -v pm2 >/dev/null 2>&1; then
