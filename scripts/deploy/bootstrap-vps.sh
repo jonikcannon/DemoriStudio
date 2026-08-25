@@ -128,6 +128,10 @@ fi
 rm -f /tmp/pm2-startup.txt
 
 echo "==> Configuring Nginx"
+# Resolves the visitor's real IP for rate limiting. `map` is only valid in the
+# http context, so it cannot live in the site config.
+install -D -m 644 "${APP_DIR}/scripts/deploy/nginx-realip.conf" \
+        /etc/nginx/conf.d/demori-realip.conf
 # The site config includes this snippet at server level and inside every
 # location that sets its own add_header, so it must exist before nginx -t runs.
 install -D -m 644 "${APP_DIR}/scripts/deploy/nginx-security-headers.conf" \

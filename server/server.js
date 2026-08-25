@@ -727,6 +727,14 @@ async function sendInquiryEmail(inquiry) {
   return true;
 }
 
+// nginx is the only hop in front of this process, and it sets X-Forwarded-For
+// to the visitor's real address (see scripts/deploy/nginx-realip.conf). Without
+// this, req.ip is nginx's own loopback address and every express-rate-limit
+// bucket below is shared by the entire internet rather than being per-client.
+// Safe only because the listener below is bound to loopback: nothing can reach
+// this process directly to forge the header.
+app.set('trust proxy', 1);
+
 app.use(helmet());
 app.use(cors({ origin, methods: ['GET', 'POST', 'PATCH', 'DELETE'], allowedHeaders: ['Content-Type', 'Authorization'] }));
 // Only these two subtrees of storage/ are public. Mount them explicitly rather
@@ -1565,7 +1573,11 @@ process.on('unhandledRejection', (reason) => {
   console.error('Unhandled promise rejection:', reason?.message || reason);
 });
 
-app.listen(port, () => console.log(`Demori API running on http://localhost:${port}`));
+// Bind to loopback: nginx proxies from 127.0.0.1, so nothing else needs to
+// reach this port. Binding *:3000 would let any host on the LAN hit the API
+// directly and forge X-Forwarded-For past the rate limiters above.
+const bindHost = process.env.BIND_HOST || '127.0.0.1';
+app.listen(port, bindHost, () => console.log(`Demori API running on http://${bindHost}:${port}`));
 console.log(isCdnEnabled()
   ? `Gallery media: CDN (${r2Config.cdnUrl})`
   : 'Gallery media: local disk');
