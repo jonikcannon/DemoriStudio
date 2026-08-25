@@ -18,7 +18,11 @@ cd "${APP_DIR}"
 
 echo "==> Pulling latest code"
 git fetch --all --prune
-git pull --ff-only
+# Naming the remote and branch explicitly: a bare `git pull --ff-only` fails on
+# a branch with no upstream tracking, which is the state a fresh clone or a
+# hand-provisioned box can easily be left in -- and it fails at step one of the
+# deploy, before anything useful has happened.
+git pull --ff-only origin "$(git rev-parse --abbrev-ref HEAD)"
 
 echo "==> Installing dependencies"
 npm ci
