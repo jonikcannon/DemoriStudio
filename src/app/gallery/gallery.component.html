@@ -29,11 +29,11 @@
              muted 
              playsinline 
              preload="metadata" 
-             [attr.aria-label]="image.title" 
+             [attr.aria-label]="image.description || image.title"
              (loadedmetadata)="onMediaLoaded()"></video>
-      <img *ngIf="image.mediaType === 'image'" 
-           [src]="image.image" 
-           [alt]="image.title" 
+      <img *ngIf="image.mediaType === 'image'"
+           [src]="image.image"
+           [alt]="image.description || image.title"
            loading="lazy" 
            decoding="async" 
            (load)="onMediaLoaded()">

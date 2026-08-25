@@ -1,7 +1,9 @@
 import { ChangeDetectionStrategy, Component, Input, Output, EventEmitter } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
-type GalleryItem = { category: string; title: string; image: string; mediaType: 'image' | 'video' };
+// Mirrors the manifest shape in app.component.ts: `description` is optional
+// because only described media carries one, and the title is the fallback.
+type GalleryItem = { category: string; title: string; image: string; mediaType: 'image' | 'video'; description?: string };
 
 @Component({
   selector: 'app-gallery',

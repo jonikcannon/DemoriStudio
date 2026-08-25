@@ -13,7 +13,7 @@ import { mediaUrl } from '../media-url';
 export class AboutComponent {
   @Output() contactClick = new EventEmitter<void>();
 
-  readonly portraitImage = mediaUrl('assets/gallery/about/20220706_152306.jpg');
+  readonly portraitImage = mediaUrl('assets/gallery/about/portrait-in-the-green-hills.jpg');
 
   onLearnMoreClick() {
     this.contactClick.emit();

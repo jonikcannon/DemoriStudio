@@ -41,7 +41,7 @@ export class AppComponent implements OnInit {
   activeGallery = 'All';
   // Hard-coded in the template rather than manifest-driven, so it needs the
   // same bucket resolution the manifest entries already carry.
-  readonly heroVideo = mediaUrl('assets/gallery/aerial/dji_fly_20260709_091900_0026_1783650454489_slowmotion.mp4');
+  readonly heroVideo = mediaUrl('assets/gallery/aerial/surf-on-the-rocky-shoreline.mp4');
   activeSection: 'home' | 'products' | 'gallery' | 'services' | 'about' | 'contact' | 'booking' = 'home';
   adminOpen = false;
   adminView: 'products' | 'inquiries' | 'bookings' = 'products';
@@ -97,7 +97,7 @@ export class AppComponent implements OnInit {
   private readonly digitalDeliveryEmailStorageKey = 'demori_digital_delivery_email';
   private readonly deliveryUpdatesOptInStorageKey = 'demori_delivery_updates_opt_in';
   private readonly defaultHiddenProductImageKeys = [
-    'assets/gallery/about/20220706_152306.jpg'
+    'assets/gallery/about/portrait-in-the-green-hills.jpg'
   ];
   private readonly hiddenProductImageKeys = new Set<string>(this.defaultHiddenProductImageKeys);
   private galleryProductsReady = false;
@@ -110,7 +110,7 @@ export class AppComponent implements OnInit {
       icon: '▦',
       title: 'Digital printing from product gallery items',
       text: 'Select any published image from the Products page and order professional digital prints with consistent color, archival paper options, and batch-ready pricing.',
-      image: mediaUrl('assets/gallery/nature/20250814_164125.jpg'),
+      image: mediaUrl('assets/gallery/nature/lake-below-the-footbridge.jpg'),
       mediaType: 'image',
       pricingTitle: 'Comprehensive print pricing (up to 8 x 11)',
       tiers: [
@@ -168,7 +168,7 @@ export class AppComponent implements OnInit {
       icon: '⌂',
       title: 'Residential real estate photography',
       text: 'MLS-ready interior and exterior coverage with consistent color, clean verticals, and agent-focused composition.',
-      image: mediaUrl('assets/gallery/beach/20260708_140401.jpg'),
+      image: mediaUrl('assets/gallery/beach/catamaran-off-the-white-sand.jpg'),
       mediaType: 'image',
       pricingTitle: 'Photo package strategy',
       tiers: [
@@ -186,9 +186,9 @@ export class AppComponent implements OnInit {
       icon: '✦',
       title: 'Drone photography and aerial coverage',
       text: 'FAA-compliant aerial captures that highlight lot lines, neighborhood context, rooflines, and estate scale.',
-      image: mediaUrl('assets/gallery/aerial/dji_fly_20260709_091946_0027_1783650449096_slowmotion.mp4'),
+      image: mediaUrl('assets/gallery/aerial/poolside-peninsula.mp4'),
       mediaType: 'video',
-      poster: mediaUrl('assets/gallery/aerial/dji_fly_20260709_092240_0032_1783650435377_photo_beautify.jpg'),
+      poster: mediaUrl('assets/gallery/aerial/resort-bay-and-breakwater.jpg'),
       pricingTitle: 'Drone pricing strategy',
       tiers: [
         { label: 'Drone add-on to photo shoot', price: '$75 - $150', details: 'Adds 5-15 aerial images to a ground package.' },
@@ -609,11 +609,17 @@ export class AppComponent implements OnInit {
     this.isMediaViewerOpen = true;
   }
   openProductMedia(item: Product) {
+    // Product.description is the commercial blurb ("Video lease license."),
+    // not the photo caption. The caption lives on the manifest entry, so
+    // recover it by image URL -- the one field a product and the gallery item
+    // it was derived from always share.
+    const source = this.gallery.find(media => media.image === item.image);
     this.selectedMedia = {
       category: item.category,
       title: item.title,
       image: item.image,
-      mediaType: item.mediaType
+      mediaType: item.mediaType,
+      description: source?.description
     };
     this.currentMediaIndex = -1;
     this.viewerVideoPlaying = false;
