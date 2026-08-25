@@ -128,6 +128,10 @@ fi
 rm -f /tmp/pm2-startup.txt
 
 echo "==> Configuring Nginx"
+# The site config includes this snippet at server level and inside every
+# location that sets its own add_header, so it must exist before nginx -t runs.
+install -D -m 644 "${APP_DIR}/scripts/deploy/nginx-security-headers.conf" \
+        /etc/nginx/snippets/demori-security.conf
 cp "${APP_DIR}/scripts/deploy/nginx.demori.conf" "/etc/nginx/sites-available/demori"
 sed -i "s|__DOMAIN__|${DOMAIN}|g" /etc/nginx/sites-available/demori
 sed -i "s|__APP_DIST__|${APP_DIR}/dist/demori-photos/browser|g" /etc/nginx/sites-available/demori
@@ -143,7 +147,7 @@ if [[ -n "${MEDIA_CDN_URL}" && "${MEDIA_CDN_URL}" != *".r2.cloudflarestorage.com
   GALLERY_BODY="return 302 ${MEDIA_CDN_URL}\$request_uri;"
 else
   echo "==> Gallery media will be served from ${DATA_DIR}/storage/media"
-  GALLERY_BODY='alias '"${DATA_DIR}"'/storage/media/; autoindex off; expires 7d; add_header Cache-Control "public";'
+  GALLERY_BODY='alias '"${DATA_DIR}"'/storage/media/; autoindex off; expires 7d; add_header Cache-Control "public"; include snippets/demori-security.conf;'
 fi
 sed -i "s|__GALLERY_LOCATION_BODY__|${GALLERY_BODY}|g" /etc/nginx/sites-available/demori
 
