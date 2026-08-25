@@ -34,3 +34,6 @@ storage/orders/
 
 # Runtime booking records written by the API.
 storage/bookings/
+
+# Gallery captions are hand-written and worth versioning, unlike the media.
+!storage/media/descriptions.json

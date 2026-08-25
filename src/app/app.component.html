@@ -54,14 +54,15 @@
       <button class="media-viewer-close" type="button" (click)="closeMediaViewer()" aria-label="Close media viewer">×</button>
       <button class="media-viewer-nav media-viewer-nav-left" type="button" (click)="showPreviousMedia()" aria-label="View previous media">‹</button>
       <button class="media-viewer-nav media-viewer-nav-right" type="button" (click)="showNextMedia()" aria-label="View next media">›</button>
-      <img *ngIf="selectedMedia.mediaType === 'image'" [src]="selectedMedia.image" [alt]="selectedMedia.title">
-      <video #viewerVideo *ngIf="selectedMedia.mediaType === 'video'" [src]="selectedMedia.image" controls autoplay playsinline preload="metadata" [attr.aria-label]="selectedMedia.title" (play)="onViewerVideoPlay()" (pause)="onViewerVideoPause()"></video>
+      <img *ngIf="selectedMedia.mediaType === 'image'" [src]="selectedMedia.image" [alt]="selectedMedia.description || selectedMedia.title">
+      <video #viewerVideo *ngIf="selectedMedia.mediaType === 'video'" [src]="selectedMedia.image" controls autoplay playsinline preload="metadata" [attr.aria-label]="selectedMedia.description || selectedMedia.title" (play)="onViewerVideoPlay()" (pause)="onViewerVideoPause()"></video>
       <div class="media-viewer-controls" *ngIf="selectedMedia.mediaType === 'video'">
         <button type="button" class="media-viewer-play" (click)="toggleViewerPlayback()">{{ viewerVideoPlaying ? 'Pause' : 'Play' }}</button>
       </div>
       <div class="media-viewer-caption">
         <p class="eyebrow">{{ selectedMedia.category }}</p>
         <h3>{{ selectedMedia.title }}</h3>
+        <p class="media-viewer-description" *ngIf="selectedMedia.description">{{ selectedMedia.description }}</p>
       </div>
     </div>
   </div>

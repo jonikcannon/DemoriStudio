@@ -12,6 +12,16 @@ const path = require('path');
 
 const MEDIA_PREFIX = 'assets/gallery';
 
+// Human-written titles and descriptions for the gallery, keyed by
+// `<category>/<file>`. It lives beside the media in the bucket because the
+// manifest can be built from the bucket alone, on a machine that has never
+// held the photos -- descriptions have to be reachable from there too.
+//
+// Three path segments, not four, so fromObjectKey() below rejects it and it
+// never turns up as a gallery item.
+const DESCRIPTIONS_KEY = `${MEDIA_PREFIX}/descriptions.json`;
+const DESCRIPTIONS_FILE = 'descriptions.json';
+
 const config = {
   accountId: String(process.env.R2_ACCOUNT_ID || '').trim(),
   accessKeyId: String(process.env.R2_ACCESS_KEY_ID || '').trim(),
@@ -111,6 +121,22 @@ function fromObjectKey(objectKey) {
   return { folder: folder.toLowerCase(), name };
 }
 
+// Body of a single object, or null when it is simply not there yet. A missing
+// descriptions file is an ordinary state -- nobody has written one -- so it
+// must not read as a bucket failure and send the manifest to its local
+// fallback.
+async function getObjectText(client, key) {
+  const { GetObjectCommand } = require('@aws-sdk/client-s3');
+  try {
+    const response = await client.send(new GetObjectCommand({ Bucket: config.bucket, Key: key }));
+    return await response.Body.transformToString();
+  } catch (error) {
+    const code = error?.name || error?.Code;
+    if (code === 'NoSuchKey' || code === 'NotFound' || error?.$metadata?.httpStatusCode === 404) return null;
+    throw error;
+  }
+}
+
 const CONTENT_TYPES = {
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
@@ -128,10 +154,13 @@ function contentTypeFor(file) {
 module.exports = {
   config,
   MEDIA_PREFIX,
+  DESCRIPTIONS_KEY,
+  DESCRIPTIONS_FILE,
   isR2Configured,
   isCdnEnabled,
   createR2Client,
   listMediaObjects,
+  getObjectText,
   toObjectKey,
   fromObjectKey,
   toPublicUrl,

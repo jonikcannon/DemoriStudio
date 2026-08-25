@@ -11,7 +11,10 @@ import { CartComponent, CartItem } from './cart/cart.component';
 import { getApiBaseUrl, mediaUrl } from './media-url';
 
 type Work = { id?: string; image: string; title: string; type: string; size?: string; price?: number; mediaType?: 'image' | 'video' };
-type GalleryItem = { category: string; title: string; image: string; mediaType: 'image' | 'video' };
+// `description` is written by hand in storage/media/descriptions.json and
+// merged into the manifest at build time. Optional: undescribed media falls
+// back to the title, which the manifest always supplies.
+type GalleryItem = { category: string; title: string; image: string; mediaType: 'image' | 'video'; description?: string };
 type Inquiry = {
   id: string;
   name: string;

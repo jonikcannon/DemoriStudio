@@ -22,7 +22,9 @@
     "migrate:drive-media": "node scripts/migrate-uploads-to-drive.js",
     "watermark": "node scripts/watermark-media.js",
     "watermark:dry": "node scripts/watermark-media.js --dry-run",
-    "deploy": "bash scripts/deploy/deploy-remote.sh"
+    "deploy": "bash scripts/deploy/deploy-remote.sh",
+    "media:names": "node scripts/apply-media-names.js",
+    "media:rename": "node scripts/rename-r2-objects.js"
   },
   "dependencies": {
     "@angular/animations": "^18.2.0",

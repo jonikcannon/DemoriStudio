@@ -15,7 +15,8 @@ const path = require('path');
 const { resolveMediaDir, CATEGORIES } = require('./media-dir');
 const {
   config: r2Config, isCdnEnabled, isR2Configured, createR2Client, listMediaObjects,
-  toObjectKey, fromObjectKey, toPublicUrl
+  toObjectKey, fromObjectKey, toPublicUrl, getObjectText,
+  DESCRIPTIONS_KEY, DESCRIPTIONS_FILE
 } = require('./r2');
 
 const forceLocal = process.argv.slice(2).includes('--local');
@@ -49,12 +50,54 @@ const imageUrlFor = (folder, name) => (
     : `assets/gallery/${folder}/${encodeURIComponent(name)}`
 );
 
-const toItem = (folder, name) => ({
-  category: categoryLabels[folder] || folder[0].toUpperCase() + folder.slice(1),
-  title: titleFromFilename(name),
-  image: imageUrlFor(folder, name),
-  mediaType: isVideo(name) ? 'video' : 'image'
-});
+// Written titles/descriptions, keyed `<category>/<file>`. Empty until a
+// descriptions.json exists, which is why every lookup below falls back to the
+// filename-derived title: an undescribed photo still gets a usable caption.
+let descriptions = {};
+
+// The bare filename is a second key into the same entry. Category moves (the
+// admin panel's /api/admin/gallery/category) change the folder without
+// touching the file, and re-keying the descriptions file on every move would
+// be one more thing to forget -- so a moved photo keeps its description.
+const describedBy = (folder, name) => descriptions[`${folder}/${name}`] || descriptions[name] || {};
+
+const toItem = (folder, name) => {
+  const described = describedBy(folder, name);
+  const item = {
+    category: categoryLabels[folder] || folder[0].toUpperCase() + folder.slice(1),
+    title: described.title || titleFromFilename(name),
+    image: imageUrlFor(folder, name),
+    mediaType: isVideo(name) ? 'video' : 'image'
+  };
+  // Omitted rather than emitted empty, so the app can tell "no description
+  // written" from "described as an empty string" and fall back to the title.
+  if (described.description) item.description = described.description;
+  return item;
+};
+
+function readLocalDescriptions() {
+  const file = path.join(galleryRoot, DESCRIPTIONS_FILE);
+  if (!fs.existsSync(file)) return {};
+  return JSON.parse(fs.readFileSync(file, 'utf8'));
+}
+
+// Sourced from wherever the media itself was listed, so the two always agree.
+// A bucket-built manifest on a machine with no photos still gets descriptions.
+async function loadDescriptions(client) {
+  try {
+    if (!client) return readLocalDescriptions();
+    const body = await getObjectText(client, DESCRIPTIONS_KEY);
+    if (body === null) {
+      console.warn(`No ${DESCRIPTIONS_KEY} in the bucket; falling back to titles from filenames.`);
+      console.warn('Run `npm run media:sync` to upload it.');
+      return {};
+    }
+    return JSON.parse(body);
+  } catch (error) {
+    console.warn(`Could not read descriptions (${error.message || error}); using titles from filenames.`);
+    return {};
+  }
+}
 
 // folder -> [file name], ordered by CATEGORIES then by name, so the two
 // sources below produce byte-identical manifests from the same library.
@@ -109,11 +152,13 @@ function warnAboutUnsyncedFiles(bucketFiles) {
   console.warn('Run `npm run media:sync` to upload them, then rerun this.\n');
 }
 
+// `client` comes back non-null only when the bucket was actually the source,
+// which is the signal for descriptions to be read from the bucket too.
 async function resolveSource() {
   // Local disk is the source when it is also what serves the media, or when
   // asked for explicitly.
-  if (forceLocal) return { files: listLocal(), source: 'local disk (--local)' };
-  if (!isCdnEnabled() || !isR2Configured()) return { files: listLocal(), source: 'local disk' };
+  if (forceLocal) return { files: listLocal(), source: 'local disk (--local)', client: null };
+  if (!isCdnEnabled() || !isR2Configured()) return { files: listLocal(), source: 'local disk', client: null };
 
   try {
     const files = await listBucket();
@@ -122,13 +167,13 @@ async function resolveSource() {
     if (!countFiles(files)) {
       console.warn('The bucket holds no media yet; falling back to local disk.');
       console.warn('Run `npm run media:sync` to upload it.');
-      return { files: listLocal(), source: 'local disk (bucket empty)' };
+      return { files: listLocal(), source: 'local disk (bucket empty)', client: null };
     }
     warnAboutUnsyncedFiles(files);
-    return { files, source: 'Cloudflare R2 bucket' };
+    return { files, source: 'Cloudflare R2 bucket', client: createR2Client() };
   } catch (error) {
     console.warn(`Could not list the R2 bucket (${error.message || error}); falling back to local disk.`);
-    return { files: listLocal(), source: 'local disk (bucket unreachable)' };
+    return { files: listLocal(), source: 'local disk (bucket unreachable)', client: null };
   }
 }
 
@@ -148,13 +193,16 @@ function writeAppMediaConfig() {
 }
 
 async function main() {
-  const { files, source } = await resolveSource();
+  const { files, source, client } = await resolveSource();
+  descriptions = await loadDescriptions(client);
   const gallery = buildManifest(files);
 
   fs.writeFileSync(output, `${JSON.stringify(gallery, null, 2)}\n`);
   const { mediaBaseUrl, apiBaseUrl } = writeAppMediaConfig();
 
+  const described = gallery.filter((item) => item.description).length;
   console.log(`Gallery manifest created with ${gallery.length} item(s).`);
+  console.log(`Described: ${described} of ${gallery.length} (the rest fall back to a title from the filename).`);
   console.log(`Listed from: ${source}`);
   console.log(mediaBaseUrl ? `Media URLs: ${mediaBaseUrl}` : 'Media URLs: local disk');
   console.log(apiBaseUrl ? `API URL: ${apiBaseUrl}` : 'API URL: same-origin /api (Nginx proxies to the Express server)');

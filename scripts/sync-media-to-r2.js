@@ -5,9 +5,20 @@
 //   npm run media:sync                  upload new and changed files
 //   npm run media:sync -- --prune       also delete objects with no local file
 //
-// Local disk stays the authoring master: drop files into a category folder,
-// run this, and R2 mirrors it. Safe to re-run -- files whose size already
-// matches the stored object are skipped, so an interrupted run resumes.
+// Local disk is the authoring master for NEW media: drop files into a category
+// folder, run this, and R2 mirrors it. Safe to re-run -- files whose size
+// already matches the stored object are skipped, so an interrupted run resumes.
+//
+// It is NOT the master for images already published. watermark-media.js stamps
+// each public image in place inside the bucket and keeps the clean master under
+// `originals/`, so a published image's bucket bytes differ from disk by design
+// and will never size-match. Without a guard this script would read every
+// stamped image as "changed" and replace the entire gallery with unwatermarked
+// originals -- so a watermarked object is skipped unless --replace-watermarked
+// says otherwise.
+//
+// To rename published media, use rename-r2-objects.js, which moves objects
+// inside the bucket and keeps the watermarked bytes intact.
 
 require('dotenv').config();
 const fs = require('fs');
@@ -15,21 +26,27 @@ const path = require('path');
 const { resolveMediaDir } = require('./media-dir');
 const {
   config, MEDIA_PREFIX, isR2Configured, createR2Client, listMediaObjects,
-  toObjectKey, toPublicUrl, contentTypeFor
+  toObjectKey, toPublicUrl, contentTypeFor, DESCRIPTIONS_KEY, DESCRIPTIONS_FILE
 } = require('./r2');
 
 const args = process.argv.slice(2);
 const dryRun = args.includes('--dry-run');
 const prune = args.includes('--prune');
+// Deliberately verbose: overwriting a watermarked object destroys the only
+// copy of those bytes, so it should never be reachable by a short flag or a
+// habit.
+const replaceWatermarked = args.includes('--replace-watermarked');
 
 // Files above this go up in parts rather than one request. The library handles
 // the multipart lifecycle; several gallery videos are hundreds of MB.
 const MULTIPART_THRESHOLD = 8 * 1024 * 1024;
 const mb = (bytes) => `${(bytes / 1048576).toFixed(1)} MB`;
 
-// Only media goes to the bucket. Notably this excludes gallery-manifest.json:
+// What the media walk picks up. Notably this excludes gallery-manifest.json:
 // it is regenerated on every build and rewritten by category moves, so it must
 // not be served with the immutable cache header used for media below.
+// descriptions.json is also excluded here, but unlike the manifest it does go
+// to the bucket -- see syncDescriptions(), which sends it with its own TTL.
 const MEDIA_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.avif', '.mp4']);
 const isMedia = (file) => MEDIA_EXTENSIONS.has(path.extname(file).toLowerCase());
 
@@ -47,13 +64,36 @@ function walk(dir, base = dir) {
   return out;
 }
 
+// Set by watermark-media.js on every object it stamps. Checked only for
+// objects that already exist and failed the size match, so this costs one
+// HeadObject per would-be replacement rather than one per file.
+async function isWatermarked(client, key) {
+  const { HeadObjectCommand } = require('@aws-sdk/client-s3');
+  try {
+    const head = await client.send(new HeadObjectCommand({ Bucket: config.bucket, Key: key }));
+    return head.Metadata?.watermarked === '1';
+  } catch {
+    // Unreadable metadata is not a licence to overwrite: treat it as protected
+    // and let the operator decide.
+    return true;
+  }
+}
+
 async function listRemote(client) {
   const remote = new Map();
   for (const object of await listMediaObjects(client)) remote.set(object.key, object.size);
   return remote;
 }
 
-async function upload(client, file, key) {
+// Media is immutable in practice: a changed photo gets a new filename.
+const IMMUTABLE = 'public, max-age=31536000, immutable';
+
+// descriptions.json is the exception -- it is edited in place under a stable
+// key, so caching it for a year would strand the old copy on every CDN edge
+// and silently freeze the gallery's captions.
+const DESCRIPTIONS_CACHE = 'public, max-age=300, must-revalidate';
+
+async function upload(client, file, key, cacheControl = IMMUTABLE) {
   const { Upload } = require('@aws-sdk/lib-storage');
   const uploader = new Upload({
     client,
@@ -62,13 +102,37 @@ async function upload(client, file, key) {
       Key: key,
       Body: fs.createReadStream(file.full),
       ContentType: contentTypeFor(file.full),
-      // Media is immutable in practice: a changed photo gets a new filename.
-      CacheControl: 'public, max-age=31536000, immutable'
+      CacheControl: cacheControl
     },
     partSize: MULTIPART_THRESHOLD,
     queueSize: 4
   });
   await uploader.done();
+}
+
+// Uploaded on its own rather than through the media loop above: it is not
+// media, it needs the shorter TTL, and it is rewritten in place rather than
+// replaced under a new name -- so the size-match skip would wrongly consider
+// an edit of the same length already uploaded.
+async function syncDescriptions(client, mediaDir) {
+  const full = path.join(mediaDir, DESCRIPTIONS_FILE);
+  if (!fs.existsSync(full)) {
+    console.log(`\nNo ${DESCRIPTIONS_FILE} on disk; gallery titles will come from filenames.`);
+    return true;
+  }
+  if (dryRun) {
+    console.log(`\n  [dry-run] upload ${DESCRIPTIONS_KEY}`);
+    return true;
+  }
+  process.stdout.write(`\n  upload ${DESCRIPTIONS_KEY} ... `);
+  try {
+    await upload(client, { full }, DESCRIPTIONS_KEY, DESCRIPTIONS_CACHE);
+    console.log('ok');
+    return true;
+  } catch (error) {
+    console.log(`FAILED: ${error.message || error}`);
+    return false;
+  }
 }
 
 async function main() {
@@ -93,7 +157,7 @@ async function main() {
   const remote = await listRemote(client);
   console.log(`Remote: ${remote.size} existing object(s)\n`);
 
-  let uploaded = 0, skipped = 0, failed = 0, bytes = 0;
+  let uploaded = 0, skipped = 0, failed = 0, bytes = 0, protectedCount = 0;
   const localKeys = new Set();
 
   for (const file of files) {
@@ -104,6 +168,14 @@ async function main() {
     // because these files are write-once; a re-edit lands under a new name.
     if (remote.get(key) === file.size) {
       skipped++;
+      continue;
+    }
+
+    // A published image differs from disk because it was stamped, not because
+    // disk is newer. Replacing it would drop the watermark from the live
+    // gallery and lose the only copy of the stamped bytes.
+    if (remote.has(key) && !replaceWatermarked && await isWatermarked(client, key)) {
+      protectedCount++;
       continue;
     }
 
@@ -127,6 +199,11 @@ async function main() {
     }
   }
 
+  if (!await syncDescriptions(client, mediaDir)) failed++;
+  // Not produced by the media walk, so --prune below would otherwise read it
+  // as an object with no local file and delete the captions it just uploaded.
+  localKeys.add(DESCRIPTIONS_KEY);
+
   if (prune) {
     const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
     const orphans = [...remote.keys()].filter(key => !localKeys.has(key));
@@ -147,7 +224,16 @@ async function main() {
     if (orphans.length) console.log(`\n${orphans.length} orphaned object(s) handled.`);
   }
 
-  console.log(`\nuploaded ${uploaded}  skipped ${skipped}  failed ${failed}  (${mb(bytes)} transferred)`);
+  console.log(`\nuploaded ${uploaded}  skipped ${skipped}  protected ${protectedCount}  failed ${failed}  (${mb(bytes)} transferred)`);
+  if (protectedCount) {
+    console.log(`\n${protectedCount} watermarked object(s) left untouched.`);
+    console.log('They differ from disk because the bucket copy is stamped and disk holds the');
+    console.log('clean original. That is expected, not drift.');
+    console.log('\nTo rename published media, keeping the watermark:');
+    console.log('  npm run media:rename -- <review.csv> --apply');
+    console.log('To genuinely re-publish them from disk (this DROPS the watermark):');
+    console.log('  npm run media:sync -- --replace-watermarked');
+  }
   if (config.cdnUrl) {
     console.log(`\nPublic URL example:\n  ${toPublicUrl(toObjectKey(files[0].relative))}`);
     console.log('\nRegenerate the manifest so it points at the CDN:\n  npm run manifest');
