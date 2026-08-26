@@ -35,5 +35,9 @@ storage/orders/
 # Runtime booking records written by the API.
 storage/bookings/
 
-# Gallery captions are hand-written and worth versioning, unlike the media.
-!storage/media/descriptions.json
+# descriptions.json is NOT unignored here, deliberately. On the server
+# storage/ is a symlink to /var/www/demori/data/storage so live data survives
+# redeploys, and git refuses to pull a tracked file in through that symlink --
+# it aborts the whole deploy. The captions live in the bucket instead
+# (assets/gallery/descriptions.json, which is what the manifest reads), and the
+# tracked *-rename-review.csv files can regenerate them via `npm run media:names`.
