@@ -1,4 +1,7 @@
-import { ChangeDetectionStrategy, Component, EventEmitter, Input, OnChanges, Output, SimpleChanges } from '@angular/core';
+import {
+  AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, ElementRef, EventEmitter,
+  Input, NgZone, OnChanges, OnDestroy, Output, SimpleChanges, ViewChild
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 
@@ -55,7 +58,7 @@ export type ProductEditPayload = {
   templateUrl: './products.component.html',
   styleUrl: './products.component.css'
 })
-export class ProductsComponent implements OnChanges {
+export class ProductsComponent implements OnChanges, AfterViewInit, OnDestroy {
   @Input() products: Product[] = [];
   @Input() categoryOptions: string[] = [];
   @Input() loading = false;
@@ -70,76 +73,84 @@ export class ProductsComponent implements OnChanges {
   private readonly selectedPrintSizeByProduct: Record<string, PrintSizeOption['size']> = {};
   private readonly selectedPrintQuantityByProduct: Record<string, number> = {};
 
-  // Paging keeps the DOM (and the media requests behind it) to one screenful.
-  // The full catalogue is ~150 cards, each with a full-size image or a video.
+  // The catalogue grows a batch at a time as the reader reaches the end, rather
+  // than all ~150 cards at once: every card carries a full-size image or a
+  // video, so rendering the lot up front is a lot of DOM and a lot of requests.
+  // Cards already opt into `loading="lazy"` and `preload="metadata"`, so what
+  // has scrolled past costs little once it is there.
   @Input() pageSize = 12;
-  currentPage = 1;
+  shownCount = 12;
   private productsSignature = '';
-  private pagedSource: Product[] | null = null;
-  private pagedKey = '';
-  private pagedCache: Product[] = [];
+  private shownSource: Product[] | null = null;
+  private shownKey = '';
+  private shownCache: Product[] = [];
+  private observer?: IntersectionObserver;
+  @ViewChild('sentinel') sentinel?: ElementRef<HTMLElement>;
+
+  private readonly changeDetector: ChangeDetectorRef;
+  private readonly zone: NgZone;
+  constructor(changeDetector: ChangeDetectorRef, zone: NgZone) {
+    this.changeDetector = changeDetector;
+    this.zone = zone;
+  }
 
   ngOnChanges(changes: SimpleChanges): void {
     if (!changes['products']) return;
-    // Jump back to the first page when the listing itself changes (category
-    // filter, admin edit or delete) rather than stranding the reader on a page
-    // that now holds different items.
+    // Collapse back to the first batch when the listing itself changes
+    // (category filter, admin edit or delete) rather than leaving the reader
+    // scrolled deep into a list that now holds different items.
     const signature = `${this.products.length}:${this.products[0]?.id || ''}:${this.products[this.products.length - 1]?.id || ''}`;
     if (signature !== this.productsSignature) {
       this.productsSignature = signature;
-      this.currentPage = 1;
+      this.shownCount = this.pageSize;
       this.editingProductId = '';
     }
-    this.currentPage = Math.min(this.currentPage, this.totalPages);
   }
 
-  get totalPages(): number {
-    return Math.max(1, Math.ceil(this.products.length / this.pageSize));
+  // The sentinel sits after the grid. Observing it rather than listening to
+  // scroll means no scroll handler, no throttling, and it fires correctly when
+  // a short first batch leaves the end of the list already on screen.
+  ngAfterViewInit(): void {
+    if (typeof IntersectionObserver === 'undefined' || !this.sentinel) return;
+    // Outside Angular so an observer that fires during scrolling does not run
+    // change detection on every tick; loadMore() re-enters deliberately.
+    this.zone.runOutsideAngular(() => {
+      this.observer = new IntersectionObserver((entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        this.zone.run(() => this.loadMore());
+      }, { rootMargin: '600px 0px' });   // start fetching before it is in view
+      this.observer.observe(this.sentinel!.nativeElement);
+    });
   }
 
-  get pagedProducts(): Product[] {
-    const key = `${this.currentPage}|${this.pageSize}`;
-    if (this.pagedSource === this.products && this.pagedKey === key) return this.pagedCache;
-    const start = (this.currentPage - 1) * this.pageSize;
-    this.pagedSource = this.products;
-    this.pagedKey = key;
-    this.pagedCache = this.products.slice(start, start + this.pageSize);
-    return this.pagedCache;
+  ngOnDestroy(): void {
+    this.observer?.disconnect();
   }
 
-  get rangeStart(): number {
-    return this.products.length ? (this.currentPage - 1) * this.pageSize + 1 : 0;
+  get shownProducts(): Product[] {
+    const key = `${this.shownCount}`;
+    if (this.shownSource === this.products && this.shownKey === key) return this.shownCache;
+    this.shownSource = this.products;
+    this.shownKey = key;
+    this.shownCache = this.products.slice(0, this.shownCount);
+    return this.shownCache;
   }
 
-  get rangeEnd(): number {
-    return Math.min(this.currentPage * this.pageSize, this.products.length);
+  get hasMore(): boolean {
+    return this.shownCount < this.products.length;
   }
 
-  // 1 ... 4 5 6 ... 13 -- keeps the control a fixed width however many pages exist.
-  get pageNumbers(): Array<number | '...'> {
-    const total = this.totalPages;
-    if (total <= 7) return Array.from({ length: total }, (_, index) => index + 1);
-    const pages: Array<number | '...'> = [1];
-    const first = Math.max(2, this.currentPage - 1);
-    const last = Math.min(total - 1, this.currentPage + 1);
-    if (first > 2) pages.push('...');
-    for (let page = first; page <= last; page++) pages.push(page);
-    if (last < total - 1) pages.push('...');
-    pages.push(total);
-    return pages;
+  get shownEnd(): number {
+    return Math.min(this.shownCount, this.products.length);
   }
 
-  goToPage(page: number | '...'): void {
-    if (page === '...') return;
-    const target = Math.min(Math.max(1, page), this.totalPages);
-    if (target === this.currentPage) return;
-    this.currentPage = target;
-    this.editingProductId = '';
-    document.getElementById('products')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
-
-  trackByPage(_: number, page: number | '...') {
-    return page;
+  // Also bound to a real button. The observer covers ordinary scrolling, but a
+  // button is what keyboard users and anything without IntersectionObserver
+  // have, and it keeps the end of the list reachable without a pointer.
+  loadMore(): void {
+    if (!this.hasMore) return;
+    this.shownCount += this.pageSize;
+    this.changeDetector.markForCheck();
   }
 
   editingProductId = '';

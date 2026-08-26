@@ -16,7 +16,7 @@
   </div>
 
   <div class="products-grid" *ngIf="!loading && products.length">
-    <article class="product-card" *ngFor="let product of pagedProducts; trackBy: trackByProduct" (click)="onMediaPreview(product)">
+    <article class="product-card" *ngFor="let product of shownProducts; trackBy: trackByProduct" (click)="onMediaPreview(product)">
       <video *ngIf="product.mediaType === 'video'" [src]="product.image" muted loop playsinline preload="metadata" [attr.aria-label]="product.title"></video>
       <img *ngIf="product.mediaType === 'image'" [src]="product.image" [alt]="product.title" loading="lazy" decoding="async">
       <div class="product-info">
@@ -85,21 +85,15 @@
     </article>
   </div>
 
-  <nav class="pager" *ngIf="!loading && totalPages > 1" aria-label="Catalogue pages">
-    <p class="pager-range">Showing {{ rangeStart }}-{{ rangeEnd }} of {{ products.length }}</p>
-    <div class="pager-controls">
-      <button type="button" class="pager-step" [disabled]="currentPage === 1" (click)="goToPage(currentPage - 1)" aria-label="Previous page">Prev</button>
-      <button
-        type="button"
-        *ngFor="let page of pageNumbers; trackBy: trackByPage"
-        class="pager-page"
-        [class.is-current]="page === currentPage"
-        [class.is-gap]="page === '...'"
-        [disabled]="page === '...'"
-        [attr.aria-current]="page === currentPage ? 'page' : null"
-        [attr.aria-label]="page === '...' ? null : 'Page ' + page"
-        (click)="goToPage(page)">{{ page }}</button>
-      <button type="button" class="pager-step" [disabled]="currentPage === totalPages" (click)="goToPage(currentPage + 1)" aria-label="Next page">Next</button>
-    </div>
-  </nav>
+  <!-- The sentinel is always rendered while more remain, so the observer has
+       something to watch. It sits outside the grid to avoid becoming a stray
+       cell in the column layout. -->
+  <div class="catalogue-more" *ngIf="!loading && products.length">
+    <p class="catalogue-count" aria-live="polite">Showing {{ shownEnd }} of {{ products.length }}</p>
+    <div #sentinel class="catalogue-sentinel" aria-hidden="true"></div>
+    <button type="button" class="catalogue-more-button" *ngIf="hasMore" (click)="loadMore()">
+      Load more
+    </button>
+    <p class="catalogue-end" *ngIf="!hasMore && products.length > pageSize">That's everything.</p>
+  </div>
 </section>

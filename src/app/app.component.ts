@@ -563,7 +563,14 @@ export class AppComponent implements OnInit {
     this.galleryLoading = this.galleryMediaTotal > 0;
   }
   changeGalleryCategory(category: string) {
+    if (category === this.activeGallery) return;
     this.activeGallery = category;
+    // Switching category collapses the catalogue back to its first batch, so a
+    // reader who had scrolled deep into the previous one would be left below
+    // the end of a much shorter grid. Bring the controls back into view rather
+    // than the grid itself, so the category tabs stay reachable for the next
+    // switch.
+    document.querySelector('.catalog-controls')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
   onMediaLoaded() {
     if (!this.galleryLoading) return;

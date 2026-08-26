@@ -259,6 +259,38 @@ const commands = {
     };
   },
 
+  // Infinite scroll on the catalogue: scroll to the bottom repeatedly and
+  // check the card count actually grows, then that it stops at the total.
+  async scroll(s) {
+    await openCatalog(s);
+    const counts = [];
+    const read = () => s.eval(`
+      (() => {
+        const m = (document.querySelector('.catalogue-count')||{}).textContent || '';
+        return { cards: document.querySelectorAll('.product-card').length, status: m.trim(),
+                 hasButton: !!document.querySelector('.catalogue-more-button'),
+                 atEnd: !!document.querySelector('.catalogue-end') };
+      })()
+    `);
+    counts.push(await read());
+    for (let i = 0; i < 20; i++) {
+      await s.eval(`window.scrollTo(0, document.body.scrollHeight)`);
+      await sleep(1200);
+      const now = await read();
+      if (now.cards === counts[counts.length - 1].cards && !now.hasButton) { counts.push(now); break; }
+      counts.push(now);
+      if (now.atEnd) break;
+    }
+    return {
+      firstBatch: counts[0],
+      afterScrolling: counts[counts.length - 1],
+      growth: counts.map((c) => c.cards),
+      screenshot: await s.shot('scroll'),
+      consoleErrors: s.consoleErrors,
+      failedRequests: s.failed
+    };
+  },
+
   // No browser needed: HEAD every manifest entry. This is what catches a
   // rename that moved the file but not the reference.
   async urls() {
