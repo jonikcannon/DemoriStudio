@@ -1,0 +1,618 @@
+{
+  "about/armadillo-in-the-leaf-litter.jpg": {
+    "title": "Armadillo foraging",
+    "description": "A nine-banded armadillo nosing through dry leaf litter at the edge of green undergrowth, its banded shell and tail catching the light."
+  },
+  "about/capuchin-and-palms.jpg": {
+    "title": "Capuchin and palms",
+    "description": "A capuchin monkey reaching up from the photographer's arm, leaning palms and turquoise surf filling the background."
+  },
+  "about/capuchin-on-the-shoulder.jpg": {
+    "title": "Capuchin on the shoulder",
+    "description": "A capuchin monkey perched on the photographer's shoulder on a palm-lined beach, both looking toward the camera under a hard blue sky."
+  },
+  "about/earth-from-space.jpg": {
+    "title": "Earth from space",
+    "description": "The blue curve of Earth with the moon above it and the sun flaring past the limb, against a dense starfield."
+  },
+  "about/full-moon-close-up.jpg": {
+    "title": "Full moon close up",
+    "description": "A tighter frame on the full moon, its seas and crater fields clearly separated across the disc."
+  },
+  "about/full-moon-in-a-black-sky.jpg": {
+    "title": "Full moon",
+    "description": "A full moon isolated against an entirely black sky, craters and maria picked out in soft grey."
+  },
+  "about/jonik-cannon-portrait.jpg": {
+    "title": "Jonik Cannon",
+    "description": "A three-frame portrait of the photographer in a dark suit and tie, shot against the pale angled walls of a gallery interior."
+  },
+  "about/poolside-lantern-at-night.jpg": {
+    "title": "Poolside lantern",
+    "description": "A glowing dome lantern on a dark deck at night, palm fronds lit behind it and a bottle standing on the boards alongside."
+  },
+  "about/portrait-in-the-green-hills.jpg": {
+    "title": "In the green hills",
+    "description": "The photographer in aviator sunglasses, close to camera, with cleared farmland and low green mountains stretching out behind under a heavy grey sky."
+  },
+  "about/red-bellied-woodpecker-in-winter.jpg": {
+    "title": "Red-bellied woodpecker",
+    "description": "A red-bellied woodpecker gripping a bare winter branch, its barred black-and-white back and scarlet crown bright against the tangle of grey twigs."
+  },
+  "about/two-turtles-in-green-water.jpg": {
+    "title": "Two turtles",
+    "description": "A pair of pond turtles drifting through murky green water, shells patterned in amber and olive, ripples spreading around them."
+  },
+  "aerial/blue-lake-beyond-the-meadow.jpg": {
+    "title": "Blue lake beyond the meadow",
+    "description": "A deep blue lake ringed by pine and hardwood, with a dirt track running down through an open green meadow in the foreground."
+  },
+  "aerial/domed-resort-and-curved-pool.mp4": {
+    "title": "Domed resort and curved pool",
+    "description": "Slow-motion sweep across a domed white resort building and its curving turquoise pool, then out over open ocean toward green hills."
+  },
+  "aerial/forest-lake-panorama.mp4": {
+    "title": "Forest lake panorama",
+    "description": "A wide, steady pass above a forest-rimmed lake, its dark water reflecting the sky as wooded ridges roll away toward distant rooftops."
+  },
+  "aerial/granite-outcrop-at-golden-hour.mp4": {
+    "title": "Granite outcrop at golden hour",
+    "description": "Low orbit over a bare granite outcrop streaked with lichen, a lone figure standing at its center and unbroken forest running to the horizon in the evening light."
+  },
+  "aerial/house-in-the-clearing.jpg": {
+    "title": "House in the clearing",
+    "description": "A wooded suburban lot from above: a long driveway cuts through the pines to a house set in a mown clearing, sun breaking through scattered cloud."
+  },
+  "aerial/lake-and-rolling-woodland.mp4": {
+    "title": "Lake and rolling woodland",
+    "description": "High flyover of a lake set in deep woodland, with a neighborhood visible along the far ridgeline under a bright, cloud-dotted sky."
+  },
+  "aerial/pine-lake-and-meadow-flyover.mp4": {
+    "title": "Pine lake and meadow",
+    "description": "Slow push out over a grassy meadow and dirt track toward a lake held in pine woods, fair-weather cumulus stacked overhead."
+  },
+  "aerial/poolside-peninsula.mp4": {
+    "title": "Poolside peninsula",
+    "description": "Slow-motion pull back from a resort pool and thatched umbrellas across a low peninsula, deep blue water stretching to a hazy headland."
+  },
+  "aerial/resort-bay-and-breakwater.jpg": {
+    "title": "Resort bay and breakwater",
+    "description": "A Caribbean resort bay from altitude: white low-rise buildings and a curved pool along the sand, a rock breakwater sheltering pale turquoise shallows against deep open blue."
+  },
+  "aerial/resort-pool-morning-sun.mp4": {
+    "title": "Resort pool in morning sun",
+    "description": "Morning sun sits low over a large resort pool, palms throwing long shadows across the deck as the camera drifts out toward the sea."
+  },
+  "aerial/rocky-point-and-hillside-resort.mp4": {
+    "title": "Rocky point and hillside resort",
+    "description": "Slow-motion arc around a rocky point where waves wash the shelf below a clock-towered resort building, forested hills rising behind."
+  },
+  "aerial/summer-canopy-and-rooftops.jpg": {
+    "title": "Summer canopy and rooftops",
+    "description": "Rolling hardwood canopy in full summer green, rooftops tucked into the trees and a low band of cumulus on the far horizon."
+  },
+  "aerial/sunburst-over-wooded-neighborhood.jpg": {
+    "title": "Sunburst over the treeline",
+    "description": "Late-day sun flares over a dense green treeline, with a single house visible in a clearing beyond the pines."
+  },
+  "aerial/surf-on-the-rocky-shoreline.mp4": {
+    "title": "Surf on the rocky shoreline",
+    "description": "Slow-motion run along a rugged shoreline where surf breaks white over black rock, a stone seawall and palm-lined path separating it from the resort grounds."
+  },
+  "aerial/turquoise-cove-and-palms.mp4": {
+    "title": "Turquoise cove and palms",
+    "description": "Slow-motion glide past palm crowns into a sheltered turquoise cove, white villas lining the sand and a swim line marking the calm water."
+  },
+  "aerial/umbrella-lined-pool-and-coastline.mp4": {
+    "title": "Umbrella-lined pool and coastline",
+    "description": "Slow-motion hold above rows of thatched umbrellas and a broad turquoise pool, the coastline curving away into blue haze."
+  },
+  "beach/autumn-lake-at-golden-hour.jpg": {
+    "title": "Autumn lake",
+    "description": "Gold and rust autumn trees standing over a flat lake at golden hour, cloud and colour doubled exactly in the still water."
+  },
+  "beach/beachfront-tower-at-dusk.jpg": {
+    "title": "Beachfront tower at dusk",
+    "description": "A lit beachfront tower standing over an empty shoreline at dusk, the last band of orange still burning along the horizon."
+  },
+  "beach/boardwalk-under-a-full-moon.jpg": {
+    "title": "Boardwalk under a full moon",
+    "description": "A wooden boardwalk running down to an empty beach under a full moon, its light laid in a bright column across the sea."
+  },
+  "beach/bottle-on-the-tideline.jpg": {
+    "title": "Bottle on the tideline",
+    "description": "A green glass bottle lying half-buried in wet sand at the tideline, sun bursting through broken cloud over the breaking surf."
+  },
+  "beach/catamaran-off-the-white-sand.jpg": {
+    "title": "Catamaran offshore",
+    "description": "A brightly painted catamaran anchored in vivid turquoise water off a long white beach, palms crowding the shoreline behind."
+  },
+  "beach/coconut-on-the-wet-sand.jpg": {
+    "title": "Coconut on the sand",
+    "description": "A fallen coconut resting on wet sand in the foreground, the beach curving away past leaning palms under heavy cloud."
+  },
+  "beach/coral-heads-in-clear-water.mp4": {
+    "title": "Coral heads",
+    "description": "A slow pass across scattered coral heads and pale sand, small fish scattering as the camera moves over them."
+  },
+  "beach/cumulus-over-the-palm-coast.jpg": {
+    "title": "Cumulus over the palm coast",
+    "description": "Towering white cumulus piled over a palm-lined shore, surf running up a narrow strip of dark sand."
+  },
+  "beach/dawn-surf-rolling-in.mp4": {
+    "title": "Dawn surf",
+    "description": "A slow hold on low dawn surf rolling up a wide flat beach, pastel cloud lying along the horizon behind it."
+  },
+  "beach/diving-down-to-the-reef.mp4": {
+    "title": "Diving down",
+    "description": "A free-diver in fins descending toward the reef, trailing bubbles as the seabed opens out below."
+  },
+  "beach/drifting-over-the-rubble.mp4": {
+    "title": "Drifting over the rubble",
+    "description": "A steady drift above broken coral rubble and sand, occasional fish moving in and out of the frame."
+  },
+  "beach/everglades-channel-at-midday.jpg": {
+    "title": "Everglades channel",
+    "description": "A wide channel of dark water running between low green banks and sawgrass under bright midday cumulus."
+  },
+  "beach/foam-below-the-headland.jpg": {
+    "title": "Foam below the headland",
+    "description": "White foam spreading across dark sand below a steep green headland, sea grape leaves crowding into the near frame."
+  },
+  "beach/glitter-path-on-open-water.jpg": {
+    "title": "Glitter path",
+    "description": "The sun burning through broken cloud over open ocean, throwing a wide field of glitter across the dark swell below."
+  },
+  "beach/golden-hour-beach-volleyball-net.jpg": {
+    "title": "Golden hour volleyball",
+    "description": "Sun low over the water with loungers and a volleyball net standing on empty sand, palm fronds framing the top of the frame."
+  },
+  "beach/green-hills-from-the-water.jpg": {
+    "title": "Green hills from the water",
+    "description": "A palm-fringed shoreline seen from offshore, forested hills rising behind it under a flat grey sky."
+  },
+  "beach/grey-dusk-on-the-shore.jpg": {
+    "title": "Grey dusk",
+    "description": "A muted dusk over a quiet beach, layered grey and mauve cloud above dark water and a low rocky point to the left."
+  },
+  "beach/lawn-above-the-blue-water.jpg": {
+    "title": "Lawn above the water",
+    "description": "Clipped lawn and broad-crowned trees on a low bluff above a rocky shore, deep blue ocean running flat to the horizon."
+  },
+  "beach/lone-tree-above-the-rocks.jpg": {
+    "title": "Lone tree above the rocks",
+    "description": "A single broad-crowned tree standing on clipped lawn above a rocky shoreline, the sea flat and grey under heavy overcast."
+  },
+  "beach/looking-down-on-the-reef.mp4": {
+    "title": "Looking down on the reef",
+    "description": "A downward view tracking across textured reef and rubble, light rippling over the bottom in shifting bands."
+  },
+  "beach/loungers-facing-the-sun.jpg": {
+    "title": "Loungers facing the sun",
+    "description": "Blue loungers lined up on the sand facing a low sun, its light spread in a wide sheet across the shallow bay."
+  },
+  "beach/miami-beach-before-sunrise.jpg": {
+    "title": "Before sunrise",
+    "description": "Hotel towers and lit streets along a city beachfront before sunrise, the ocean pale and calm out to a soft pink horizon."
+  },
+  "beach/miami-beach-sunrise-panorama.jpg": {
+    "title": "Miami Beach sunrise panorama",
+    "description": "A wide panorama of an empty beach at sunrise, raked sand sweeping across the foreground and hotel towers standing at either end of the bay."
+  },
+  "beach/midday-surf-under-cirrus.jpg": {
+    "title": "Midday surf",
+    "description": "Bright midday surf breaking in clean lines onto pale sand, thin cirrus streaking a hard blue sky above."
+  },
+  "beach/moon-behind-the-cloud-bank.jpg": {
+    "title": "Behind the cloud bank",
+    "description": "The moon diffused behind a dense bank of night cloud, a faint silver track running across the water at the bottom of the frame."
+  },
+  "beach/moonlight-through-the-clouds.jpg": {
+    "title": "Moonlight through the clouds",
+    "description": "The moon burning through a torn layer of night cloud, its light laid out in a broken silver path across the sea below."
+  },
+  "beach/moonlit-clouds-over-the-resort.jpg": {
+    "title": "Moonlit clouds",
+    "description": "Heavy moonlit cloud filling the night sky above a resort, lit pools and palms glowing far below against the black sea."
+  },
+  "beach/morning-light-along-the-curve.jpg": {
+    "title": "Morning light along the curve",
+    "description": "Bright morning sun over a curving beach, clear turquoise shallows on the left and a palm-covered point closing the bay."
+  },
+  "beach/night-heron-on-the-rocks.jpg": {
+    "title": "Night heron",
+    "description": "A yellow-crowned night heron picking its way along a weed-covered rock shelf at the water's edge."
+  },
+  "beach/over-the-reef-shallows.mp4": {
+    "title": "Over the reef shallows",
+    "description": "A snorkel-level drift over patchy reef in clear blue water, sergeant majors moving through the coral heads below."
+  },
+  "beach/palapa-in-the-late-sun.jpg": {
+    "title": "Palapa in the late sun",
+    "description": "A thatched palapa and empty loungers on white sand, palms leaning over a calm turquoise bay in hazy late sun."
+  },
+  "beach/palm-headland-in-gold-light.jpg": {
+    "title": "Palm headland",
+    "description": "A rocky headland crowded with coconut palms catching low gold light, waves folding onto the sand in the foreground."
+  },
+  "beach/palm-shadows-on-the-sand.jpg": {
+    "title": "Palm shadows",
+    "description": "Long palm shadows thrown across wet sand toward the camera, the green headland and its fringe of trees lit warm beyond."
+  },
+  "beach/palms-and-crescent-moon.jpg": {
+    "title": "Palms and crescent moon",
+    "description": "Coconut palms silhouetted against a graded dawn sky, a thin crescent moon hanging above them and orange light along the sea horizon."
+  },
+  "beach/palms-at-first-light.jpg": {
+    "title": "Palms at first light",
+    "description": "The same stand of palms held against a violet-to-amber dawn, the crescent moon high and the ocean just catching the first light."
+  },
+  "beach/pink-dawn-over-the-strand.jpg": {
+    "title": "Pink dawn",
+    "description": "A broad hard-packed beach at dawn, pink and violet cloud spread across the sky and condo towers receding into haze on the left."
+  },
+  "beach/pink-dusk-over-the-bay.jpg": {
+    "title": "Pink dusk",
+    "description": "Pink and grey dusk cloud over a calm bay, lit villas along the shore and the last colour fading behind a low headland."
+  },
+  "beach/pool-and-palms-at-first-light.jpg": {
+    "title": "Pool and palms at first light",
+    "description": "A resort pool and dense palm grove seen from above at dawn, storm cloud stacked over the ocean and the first orange light on the horizon."
+  },
+  "beach/quiet-dawn-at-the-waterline.mp4": {
+    "title": "Quiet dawn",
+    "description": "A steady view along the waterline at first light, muted cloud overhead and thin surf sliding over the packed sand."
+  },
+  "beach/red-roofs-below-the-treeline.jpg": {
+    "title": "Red roofs below the treeline",
+    "description": "Red-tiled roofs scattered through dense green canopy, the sea and a bank of evening cloud stretching along the far horizon."
+  },
+  "beach/reef-and-open-blue.mp4": {
+    "title": "Reef and open blue",
+    "description": "The reef falling away into open blue water, coral heads standing out against the deeper channel beyond."
+  },
+  "beach/reef-below-the-surface.jpg": {
+    "title": "Reef below the surface",
+    "description": "A wide underwater view of a reef in clear blue water, the mirrored surface overhead and a snorkeler at the top right."
+  },
+  "beach/reef-floor-in-close.mp4": {
+    "title": "Reef floor",
+    "description": "A close, slow drift directly above the reef floor, algae and coral texture filling the whole frame."
+  },
+  "beach/reef-from-directly-above.jpg": {
+    "title": "Reef from above",
+    "description": "A vertical frame looking straight down through clear blue water onto a mottled reef of coral and pale sand."
+  },
+  "beach/reef-texture-from-above.mp4": {
+    "title": "Reef texture",
+    "description": "An overhead drift across dense reef growth, dark coral and pale sand alternating beneath the surface light."
+  },
+  "beach/resort-pool-under-the-moon.jpg": {
+    "title": "Pool under the moon",
+    "description": "A lit turquoise pool glowing among dark palms at night, the moon breaking through cloud over the black sea beyond."
+  },
+  "beach/ringed-planet-over-the-shore.jpg": {
+    "title": "Ringed planet over the shore",
+    "description": "A composited scene: an empty beach and grey-blue sea with a vast ringed planet hanging low in the sky at the left of the frame."
+  },
+  "beach/rocky-cove-under-blue-sky.jpg": {
+    "title": "Rocky cove",
+    "description": "A small sandy cove enclosed by a low rock spur, palms leaning in from the right under a deep blue sky."
+  },
+  "beach/sargassum-at-sunrise.jpg": {
+    "title": "Sargassum at sunrise",
+    "description": "Thick brown sargassum banked along the waterline at sunrise, the sun a soft disc behind haze and boats sitting far offshore."
+  },
+  "beach/sea-grape-cove.jpg": {
+    "title": "Sea grape cove",
+    "description": "A small cove enclosed by a wooded headland, surf washing in over brown sand with sea grape and cactus on the bank above."
+  },
+  "beach/sergeant-majors-on-the-reef.mp4": {
+    "title": "Sergeant majors",
+    "description": "Striped sergeant majors hanging over a broken reef floor, a snorkeler passing along the surface above."
+  },
+  "beach/shorebirds-lifting-off.jpg": {
+    "title": "Shorebirds lifting off",
+    "description": "A flock of gulls and skimmers rising together off a wide flat beach, pale surf and a soft overcast sky behind them."
+  },
+  "beach/slow-drift-across-the-coral.mp4": {
+    "title": "Slow drift",
+    "description": "A slow-motion drift across coral heads in bright blue water, small striped fish holding station over the reef."
+  },
+  "beach/snorkelling-the-shallow-reef.mp4": {
+    "title": "Snorkelling the reef",
+    "description": "A handheld snorkel pass over a shallow reef, the seabed rising and falling as the swell carries the camera."
+  },
+  "beach/soft-sun-over-the-shallows.jpg": {
+    "title": "Soft sun over the shallows",
+    "description": "The sun diffused behind thin cloud above a shallow turquoise bay, low villas and palms sitting along the far point."
+  },
+  "beach/sun-sinking-over-the-reef.mp4": {
+    "title": "Sinking over the reef",
+    "description": "A long hold as the sun drops toward the horizon, its gold path rippling across water breaking gently over a low reef."
+  },
+  "beach/sun-through-the-palm-crowns.jpg": {
+    "title": "Sun through the palms",
+    "description": "The sun flaring in a hard star through overhanging palm crowns, wet sand and gentle surf running along the shore below."
+  },
+  "beach/sunlight-across-the-shallow-reef.mp4": {
+    "title": "Sunlight across the reef",
+    "description": "Surface light playing over a shallow reef shelf, the water shifting from green to blue as the camera moves."
+  },
+  "beach/sunrise-on-the-wet-sand.jpg": {
+    "title": "Sunrise on wet sand",
+    "description": "Orange dawn light reflected in a sheet of water left on the flat sand, distant walkers scattered along the empty shore."
+  },
+  "beach/sunrise-over-the-breakers.jpg": {
+    "title": "Sunrise over the breakers",
+    "description": "The sun sitting half-risen on the horizon in a deep orange sky, its light running in a broken line across the incoming surf."
+  },
+  "beach/sunset-behind-the-buoy-line.mp4": {
+    "title": "Behind the buoy line",
+    "description": "The sun setting beyond a line of white marker buoys, the sea turning from gold to pewter as the light goes."
+  },
+  "beach/swimmers-in-the-shallows.jpg": {
+    "title": "Swimmers in the shallows",
+    "description": "Swimmers and small boats scattered across clear turquoise shallows, a marker line of floats running out from the pale sand."
+  },
+  "beach/tennis-courts-in-the-green.jpg": {
+    "title": "Courts in the green",
+    "description": "Blue tennis courts set into thick tropical greenery, palms and manicured lawn in the foreground and low hills fading behind."
+  },
+  "beach/villas-along-the-point.jpg": {
+    "title": "Villas along the point",
+    "description": "White villas and palms strung along a low point enclosing a calm bay, the sun burning through cloud out over open water."
+  },
+  "beach/walkers-at-sunrise.jpg": {
+    "title": "Walkers at sunrise",
+    "description": "A vivid orange and gold sunrise over the breakers, a few early walkers silhouetted along the wet sand."
+  },
+  "nature/airboat-on-the-open-channel.jpg": {
+    "title": "Airboat on the channel",
+    "description": "An airboat sitting far off on a wide channel, sawgrass banks running away on both sides beneath tall summer cloud."
+  },
+  "nature/american-falls-in-mist.jpg": {
+    "title": "American Falls in mist",
+    "description": "The falls seen from water level, a wall of white water dropping onto tumbled boulders with mist rising across the frame."
+  },
+  "nature/autumn-reflections-on-the-lake.jpg": {
+    "title": "Autumn reflections",
+    "description": "Gold and rust autumn trees doubled in a flat lake, warm evening cloud drifting across the reflected sky."
+  },
+  "nature/autumn-river-over-the-ledges.jpg": {
+    "title": "Autumn river",
+    "description": "A river running fast over flat rock ledges between banks of yellow autumn foliage, the water catching the low sun upstream."
+  },
+  "nature/blue-ridges-in-winter-haze.jpg": {
+    "title": "Blue ridges",
+    "description": "Ridge behind ridge fading into winter haze, a bare pale snag standing in the near frame against the layered blue distance."
+  },
+  "nature/cairn-against-the-sun.jpg": {
+    "title": "Cairn against the sun",
+    "description": "A stacked stone cairn silhouetted on open rock with the sun directly behind it, scattered cloud running to the treeline."
+  },
+  "nature/cairn-on-the-granite-flat.jpg": {
+    "title": "Cairn on the granite flat",
+    "description": "A stacked stone cairn standing on a broad granite outcrop, towering cumulus building over the treeline behind."
+  },
+  "nature/canyon-depths-under-overcast.jpg": {
+    "title": "Canyon depths",
+    "description": "Deeply eroded canyon walls dropping away under heavy overcast, red rock at the near rim giving way to grey layers below."
+  },
+  "nature/canyon-layers-in-red-and-grey.jpg": {
+    "title": "Canyon layers",
+    "description": "Stacked bands of red and grey rock stepping down into the canyon, a green-topped promontory jutting into the middle distance."
+  },
+  "nature/canyon-panorama-under-grey-sky.jpg": {
+    "title": "Canyon panorama",
+    "description": "A broad panorama of the canyon under thick grey cloud, distant blue ranges just visible past the far rim."
+  },
+  "nature/canyon-rim-under-heavy-cloud.jpg": {
+    "title": "Canyon rim",
+    "description": "A wide view across the canyon under flat grey cloud, terraces receding in cooling shades of rust and slate."
+  },
+  "nature/canyon-walls-in-late-light.jpg": {
+    "title": "Canyon walls in late light",
+    "description": "Layered canyon cliffs catching low sun, scrub clinging to the terraces and deep shadow filling the gorge below."
+  },
+  "nature/cascade-into-the-green-gorge.jpg": {
+    "title": "Cascade into the gorge",
+    "description": "A broad cascade spilling from a layered limestone cliff into vivid turquoise water, green canopy leaning in from above."
+  },
+  "nature/channel-through-the-lily-pads.jpg": {
+    "title": "Channel through the pads",
+    "description": "An open channel of dark water winding between banks of sawgrass and floating lily pads under building cumulus."
+  },
+  "nature/cloud-reflections-on-still-water.jpg": {
+    "title": "Cloud reflections",
+    "description": "A wide bank of summer cloud doubled in the flat surface of a wooded pond, treeline meeting its own reflection at the far shore."
+  },
+  "nature/clouds-mirrored-from-the-dock.jpg": {
+    "title": "Mirrored from the dock",
+    "description": "Cumulus clouds reflected whole in a still pond, the weathered top rail of a dock running across the bottom of the frame."
+  },
+  "nature/colorado-river-through-the-canyon.jpg": {
+    "title": "Colorado through the canyon",
+    "description": "The river winding between sheer banded walls, folded grey strata filling the middle of the frame below a red rock foreground."
+  },
+  "nature/creek-steps-through-the-woods.jpg": {
+    "title": "Creek steps",
+    "description": "A woodland creek dropping through a series of low rock shelves, boulders and leaf litter crowding both banks in dappled light."
+  },
+  "nature/everglades-canal-under-clouds.jpg": {
+    "title": "Canal under clouds",
+    "description": "A straight canal running to the horizon between a wooded bank and open sawgrass, transmission towers marching into the distance."
+  },
+  "nature/full-moon-through-haze.jpg": {
+    "title": "Full moon through haze",
+    "description": "A full moon glowing warm through thin haze, its craters softened and a faint halo bleeding into the black sky."
+  },
+  "nature/gliding-through-the-lily-pads.mp4": {
+    "title": "Gliding through the pads",
+    "description": "A low, water-level glide alongside dense lily pads and sawgrass, the wake rolling the leaves as the bank slides past."
+  },
+  "nature/granite-slab-above-brown-water.jpg": {
+    "title": "Granite slab",
+    "description": "A broad granite slab in the foreground drops away to a churning, silt-brown river, a bleached deadfall caught midstream."
+  },
+  "nature/ice-curtain-under-the-rhododendron.jpg": {
+    "title": "Ice curtain",
+    "description": "A rock face sheathed in thick ice and hanging icicles, rhododendron leaves drooping over the ledge above."
+  },
+  "nature/icicles-along-the-rock-ledge.jpg": {
+    "title": "Icicles along the ledge",
+    "description": "A long run of icicles hanging from a mossy rock ledge, the frozen flow spreading out in pale sheets across the ground below."
+  },
+  "nature/inuksuk-on-the-granite.jpg": {
+    "title": "Inuksuk",
+    "description": "A balanced stone figure with outstretched arms standing on bare granite, the horizon of trees running low behind it."
+  },
+  "nature/lake-below-the-footbridge.jpg": {
+    "title": "Below the footbridge",
+    "description": "A summer lake with a low footbridge crossing at the far end, heavy green woods on both banks and grass leaning in from the near shore."
+  },
+  "nature/lily-pad-field-under-cumulus.jpg": {
+    "title": "Lily pad field",
+    "description": "A broad field of lily pads spreading across still, dark water, bright cumulus stacked above the sawgrass horizon."
+  },
+  "nature/lily-pads-at-the-sawgrass-edge.jpg": {
+    "title": "At the sawgrass edge",
+    "description": "A dense mat of lily pads pressed against a wall of sawgrass, dark water rippling in the foreground."
+  },
+  "nature/lily-pads-on-the-still-pond.jpg": {
+    "title": "Lily pads",
+    "description": "A pond blanketed in lily pads and duckweed, a clump of rushes standing in the foreground and pines crowding the far bank."
+  },
+  "nature/mackerel-clouds-over-bare-rock.jpg": {
+    "title": "Mackerel clouds",
+    "description": "A dense mackerel sky stretched over a wide granite flat, the sun flaring at the upper right above a distant treeline."
+  },
+  "nature/mackerel-sky-over-the-outcrop.jpg": {
+    "title": "Mackerel sky",
+    "description": "A rippled mackerel sky spread over a bare granite outcrop, the sun burning through a thin gap near the horizon."
+  },
+  "nature/mangrove-roots-along-the-bank.jpg": {
+    "title": "Roots along the bank",
+    "description": "A dense row of trees on a low bank, their pale buttressed roots gripping the exposed shoreline above brown water."
+  },
+  "nature/mossy-cascade-in-green-forest.jpg": {
+    "title": "Mossy cascade",
+    "description": "Water slides down a moss-covered rock face in deep forest shade, a bright clump of green undergrowth clinging to the ledge beside it."
+  },
+  "nature/mountain-stream-in-late-winter.jpg": {
+    "title": "Mountain stream",
+    "description": "A mountain stream running white over rounded boulders, bare winter trees above and dark evergreen shrub crowding the far bank."
+  },
+  "nature/narrow-creek-in-deep-green.jpg": {
+    "title": "Narrow creek",
+    "description": "A narrow creek running over pale stones through dense summer woods, exposed roots gripping the undercut banks."
+  },
+  "nature/niagara-falls-from-the-water.mp4": {
+    "title": "Niagara from the water",
+    "description": "A boat-level pass along the base of the falls, the full width of the cataract pouring into churning green water and spray."
+  },
+  "nature/niagara-falls-panorama.jpg": {
+    "title": "Niagara panorama",
+    "description": "The full sweep of the falls from the overlook, spray columns rising between the two cataracts and a tour boat crossing the green water below."
+  },
+  "nature/rain-pool-on-the-outcrop.jpg": {
+    "title": "Rain pool",
+    "description": "A shallow rain pool held in a hollow of the granite outcrop, pale lichen ringing its edge and low sun raking the rock."
+  },
+  "nature/red-moss-basin-on-the-granite.jpg": {
+    "title": "Red moss basin",
+    "description": "A shallow basin in a granite outcrop filled with vivid red moss, the bare rock stretching away to a low green treeline."
+  },
+  "nature/red-moss-on-sunlit-granite.jpg": {
+    "title": "Red moss on granite",
+    "description": "Hard midday sun over a bare granite outcrop scattered with loose stone and patches of red moss, pines low on the horizon."
+  },
+  "nature/red-rock-foreground-over-the-canyon.jpg": {
+    "title": "Red rock rim",
+    "description": "Broken red boulders and dry scrub along the rim, the banded canyon opening out beyond under a pale, clouded sky."
+  },
+  "nature/red-tailed-hawk-in-the-branches.jpg": {
+    "title": "Red-tailed hawk",
+    "description": "A red-tailed hawk gripping a branch and staring straight down at the camera, pale barred breast bright against green leaves and blue sky."
+  },
+  "nature/reeds-at-the-lake-edge.jpg": {
+    "title": "Reeds at the lake edge",
+    "description": "Tall reeds and broad green leaves crowding the near bank of a wooded lake, the footbridge just visible across the water."
+  },
+  "nature/resort-pool-at-dusk.jpg": {
+    "title": "Resort pool at dusk",
+    "description": "A lit resort pool and palm groves seen from above at dusk, the ocean and a band of sunset cloud stretching along the horizon."
+  },
+  "nature/river-below-the-meadow-slope.jpg": {
+    "title": "Below the meadow slope",
+    "description": "The same river seen from higher on a mown meadow slope, woodland crowding the far bank under stacked cumulus."
+  },
+  "nature/river-bend-and-grassy-bank.jpg": {
+    "title": "River bend",
+    "description": "A slow river curving past a red clay bank and rock ledge, tall grass and wildflowers filling the foreground slope."
+  },
+  "nature/river-gorge-below-the-ridge.jpg": {
+    "title": "River gorge",
+    "description": "A shallow river winding through a sandy gorge, spring green on both slopes and a house perched on the ridge above."
+  },
+  "nature/sandbar-on-the-shoals.jpg": {
+    "title": "Sandbar on the shoals",
+    "description": "A curving sandbar along a shallow river running over wide rock shoals, sun flaring through trees at the left edge."
+  },
+  "nature/sawgrass-island-on-open-water.jpg": {
+    "title": "Sawgrass island",
+    "description": "A low island of sawgrass sitting in open water under a bright blue sky and scattered fair-weather cloud."
+  },
+  "nature/spanish-moss-over-blackwater.jpg": {
+    "title": "Spanish moss over blackwater",
+    "description": "Spanish moss hangs in long grey curtains from bare limbs leaning over a dark, slow river under a bright blue sky."
+  },
+  "nature/sparrow-above-the-gorge.jpg": {
+    "title": "Sparrow above the gorge",
+    "description": "A small sparrow perched on a limestone outcrop in the foreground, the turquoise river and far tourist shoreline soft behind it."
+  },
+  "nature/spring-cascade-over-rock-shelves.jpg": {
+    "title": "Spring cascade",
+    "description": "A creek in early spring running white over a staircase of broad rock shelves, bare grey trunks rising from both banks."
+  },
+  "nature/spring-green-along-the-river.jpg": {
+    "title": "Spring green",
+    "description": "A wide river running between steep banks in full spring leaf, red clay and sand exposed along the waterline."
+  },
+  "nature/still-lake-in-summer-woods.jpg": {
+    "title": "Still lake in summer woods",
+    "description": "A quiet lake ringed by full summer green, the treeline doubled almost exactly in the glassy surface."
+  },
+  "nature/sun-over-the-quiet-lake.jpg": {
+    "title": "Sun over the lake",
+    "description": "The sun high and flaring over a calm lake, a grassy bank and stand of reeds in the foreground and low wooded hills beyond."
+  },
+  "nature/sun-through-the-creekside-canopy.jpg": {
+    "title": "Sun through the canopy",
+    "description": "Sun bursts through creekside trees in a hard star, water running shallow over rock ledges toward the camera."
+  },
+  "nature/the-river-far-below.jpg": {
+    "title": "The river far below",
+    "description": "The Colorado threading in a thin brown line through the canyon floor, layered cliffs stepping down toward it from the red rim."
+  },
+  "nature/waterfall-beneath-bare-roots.jpg": {
+    "title": "Beneath the roots",
+    "description": "A small waterfall spilling over a rock lip directly below a tangle of exposed tree roots, water smoothing to glass in the pool beneath."
+  },
+  "nature/white-barn-at-sundown.jpg": {
+    "title": "White barn at sundown",
+    "description": "A white barn sitting alone at the far edge of a wide green pasture, the sun dropping through bare trees on the right."
+  },
+  "nature/winter-cairn-by-the-path.jpg": {
+    "title": "Winter cairn",
+    "description": "A carefully stacked cairn of lichen-mottled stones on leaf litter beside a paved path, bare winter woods rising behind."
+  },
+  "nature/winter-lake-mirror.jpg": {
+    "title": "Winter lake mirror",
+    "description": "A still winter lake holding a near-perfect reflection of the clouds, framed by bare branches and a far bank of dry reeds."
+  },
+  "nature/winter-river-from-the-bridge.jpg": {
+    "title": "Winter river",
+    "description": "A river seen from a bridge in low winter light, bare trees crowding steep clay banks and a sandbar catching the last sun."
+  }
+}
