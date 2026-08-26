@@ -9,16 +9,20 @@
 // folder, run this, and R2 mirrors it. Safe to re-run -- files whose size
 // already matches the stored object are skipped, so an interrupted run resumes.
 //
-// It is NOT the master for images already published. watermark-media.js stamps
-// each public image in place inside the bucket and keeps the clean master under
-// `originals/`, so a published image's bucket bytes differ from disk by design
-// and will never size-match. Without a guard this script would read every
-// stamped image as "changed" and replace the entire gallery with unwatermarked
-// originals -- so a watermarked object is skipped unless --replace-watermarked
-// says otherwise.
+// It is NOT the master for media already published. Two passes derive the
+// public copy from the local file and keep the master under `originals/`:
+//
+//   watermark-media.js  stamps each public image in place
+//   webify-videos.js    re-encodes each HEVC video to browser-playable H.264
+//
+// Either way the published bytes differ from disk by design and can never
+// size-match, so without a guard this script would read every one of them as
+// "changed" and undo the work -- un-watermarking the gallery, or putting HEVC
+// files browsers cannot decode back in front of visitors. A derived object is
+// skipped unless --replace-derived says otherwise.
 //
 // To rename published media, use rename-r2-objects.js, which moves objects
-// inside the bucket and keeps the watermarked bytes intact.
+// inside the bucket and keeps the derived bytes intact.
 
 require('dotenv').config();
 const fs = require('fs');
@@ -35,7 +39,9 @@ const prune = args.includes('--prune');
 // Deliberately verbose: overwriting a watermarked object destroys the only
 // copy of those bytes, so it should never be reachable by a short flag or a
 // habit.
-const replaceWatermarked = args.includes('--replace-watermarked');
+// --replace-watermarked is kept as an alias: it was the flag's name before
+// web-encoded videos joined watermarked images under the same protection.
+const replaceDerived = args.includes('--replace-derived') || args.includes('--replace-watermarked');
 
 // Files above this go up in parts rather than one request. The library handles
 // the multipart lifecycle; several gallery videos are hundreds of MB.
@@ -64,14 +70,23 @@ function walk(dir, base = dir) {
   return out;
 }
 
-// Set by watermark-media.js on every object it stamps. Checked only for
-// objects that already exist and failed the size match, so this costs one
-// HeadObject per would-be replacement rather than one per file.
-async function isWatermarked(client, key) {
+// A public object that was produced FROM the local file rather than being a
+// copy of it, and so must never be overwritten by one:
+//
+//   watermarked=1  set by watermark-media.js on every image it stamps
+//   webencoded=1   set by webify-videos.js on every H.264 video it publishes
+//
+// Both differ from disk by design and can never size-match, so without this
+// every sync would look at them and see "changed, re-upload" -- undoing the
+// stamping or putting an undecodable HEVC file back in the gallery.
+//
+// Checked only for objects that already exist and failed the size match, so it
+// costs one HeadObject per would-be replacement rather than one per file.
+async function isDerived(client, key) {
   const { HeadObjectCommand } = require('@aws-sdk/client-s3');
   try {
     const head = await client.send(new HeadObjectCommand({ Bucket: config.bucket, Key: key }));
-    return head.Metadata?.watermarked === '1';
+    return head.Metadata?.watermarked === '1' || head.Metadata?.webencoded === '1';
   } catch {
     // Unreadable metadata is not a licence to overwrite: treat it as protected
     // and let the operator decide.
@@ -171,10 +186,10 @@ async function main() {
       continue;
     }
 
-    // A published image differs from disk because it was stamped, not because
-    // disk is newer. Replacing it would drop the watermark from the live
-    // gallery and lose the only copy of the stamped bytes.
-    if (remote.has(key) && !replaceWatermarked && await isWatermarked(client, key)) {
+    // A published image differs from disk because it was stamped; a published
+    // video because it was re-encoded for the browser. Either way disk is not
+    // newer, and replacing it would undo the derivation.
+    if (remote.has(key) && !replaceDerived && await isDerived(client, key)) {
       protectedCount++;
       continue;
     }
@@ -226,13 +241,13 @@ async function main() {
 
   console.log(`\nuploaded ${uploaded}  skipped ${skipped}  protected ${protectedCount}  failed ${failed}  (${mb(bytes)} transferred)`);
   if (protectedCount) {
-    console.log(`\n${protectedCount} watermarked object(s) left untouched.`);
-    console.log('They differ from disk because the bucket copy is stamped and disk holds the');
-    console.log('clean original. That is expected, not drift.');
-    console.log('\nTo rename published media, keeping the watermark:');
+    console.log(`\n${protectedCount} derived object(s) left untouched.`);
+    console.log('They differ from disk because the bucket copy is watermarked or re-encoded');
+    console.log('for the browser, and disk holds the master. That is expected, not drift.');
+    console.log('\nTo rename published media, keeping the derived bytes:');
     console.log('  npm run media:rename -- <review.csv> --apply');
-    console.log('To genuinely re-publish them from disk (this DROPS the watermark):');
-    console.log('  npm run media:sync -- --replace-watermarked');
+    console.log('To genuinely re-publish from disk (DROPS watermarks and re-publishes HEVC):');
+    console.log('  npm run media:sync -- --replace-derived');
   }
   if (config.cdnUrl) {
     console.log(`\nPublic URL example:\n  ${toPublicUrl(toObjectKey(files[0].relative))}`);

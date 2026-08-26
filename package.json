@@ -24,7 +24,9 @@
     "watermark:dry": "node scripts/watermark-media.js --dry-run",
     "deploy": "bash scripts/deploy/deploy-remote.sh",
     "media:names": "node scripts/apply-media-names.js",
-    "media:rename": "node scripts/rename-r2-objects.js"
+    "media:rename": "node scripts/rename-r2-objects.js",
+    "webify": "node scripts/webify-videos.js",
+    "webify:dry": "node scripts/webify-videos.js --dry-run"
   },
   "dependencies": {
     "@angular/animations": "^18.2.0",
