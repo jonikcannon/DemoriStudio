@@ -14,7 +14,12 @@
 <main id="top">
   <section class="hero" *ngIf="activeSection === 'home'">
     <div class="hero-copy"><p class="eyebrow">PHOTOGRAPHY + DRONE AERIALS</p><h1>Made to make<br><em>you look twice.</em></h1><p class="intro">Thoughtful imagery for the places, people, and stories worth remembering.</p><button class="underlined" (click)="activeSection = 'products'">Explore the catalog <span>↓</span></button></div>
-    <div class="hero-image"><video [src]="heroVideo" autoplay muted loop playsinline aria-label="Aerial drone footage"></video><div class="hero-stamp">EST. 2014<br><b>✦</b><br>NEW YORK · BEYOND</div></div>
+    <!-- [muted]="true" binds the PROPERTY, not the attribute. A bare `muted`
+         only reflects to the property when the browser parses static HTML;
+         Angular creates the element and then sets attributes, so the property
+         stays false, the browser treats the video as unmuted, and autoplay is
+         refused with NotAllowedError. The attribute alone is not enough. -->
+    <div class="hero-image"><video [src]="heroVideo" [poster]="heroPoster" [muted]="true" autoplay loop playsinline disablepictureinpicture aria-label="Aerial drone footage: surf breaking over a rocky shoreline"></video><div class="hero-stamp">EST. 2014<br><b>✦</b><br>NEW YORK · BEYOND</div></div>
   </section>
 
   <section class="statement" *ngIf="activeSection === 'home'"><p class="eyebrow">A DIFFERENT PERSPECTIVE</p><h2>Images with a sense<br>of <em>place</em> and feeling.</h2><div class="statement-note">From the ground to the sky, we make photographs that feel both immediate and lasting.<span>↘</span></div></section>

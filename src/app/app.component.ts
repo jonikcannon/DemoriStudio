@@ -41,7 +41,22 @@ export class AppComponent implements OnInit {
   activeGallery = 'All';
   // Hard-coded in the template rather than manifest-driven, so it needs the
   // same bucket resolution the manifest entries already carry.
-  readonly heroVideo = mediaUrl('assets/gallery/aerial/surf-on-the-rocky-shoreline.mp4');
+  //
+  // Deliberately NOT the aerial/ gallery file this was derived from. That one
+  // is a 206 MB 4K HEVC original straight off the drone, and Chrome and Firefox
+  // cannot decode HEVC in <video> at all -- it failed with MEDIA_ERR_SRC_NOT_
+  // SUPPORTED and the hero sat black. This is an H.264 1080p re-encode at
+  // 30 MB with +faststart, so it plays everywhere and starts on a short prefix.
+  //
+  // It lives in storage/media/hero/, which syncs to the bucket like any other
+  // media but is skipped by the manifest: buildManifest() only walks the
+  // folders in CATEGORIES, so the hero never becomes a gallery item or a
+  // product.
+  readonly heroVideo = mediaUrl('assets/gallery/hero/hero-surf-rocky-shoreline.mp4');
+  // Bundled rather than put in the bucket: watermark-media.js stamps every
+  // image under assets/gallery/ regardless of folder, and a watermarked poster
+  // flashing before an unwatermarked video looks like a bug.
+  readonly heroPoster = 'assets/hero-poster.jpg';
   activeSection: 'home' | 'products' | 'gallery' | 'services' | 'about' | 'contact' | 'booking' = 'home';
   adminOpen = false;
   adminView: 'products' | 'inquiries' | 'bookings' = 'products';
