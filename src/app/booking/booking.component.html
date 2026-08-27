@@ -22,23 +22,72 @@
     <button type="button" class="underlined" (click)="enquire.emit()">Ask about availability</button>
   </div>
 
-  <!-- Day picker -->
-  <div class="booking-groups" *ngIf="!loading && slots.length && !selectedSlot">
-    <div class="booking-group" *ngFor="let group of slotGroups; trackBy: trackByGroup">
-      <h3>{{ group.label }}</h3>
-      <div class="booking-grid">
+  <!-- Calendar + date picker -->
+  <div class="booking-picker" *ngIf="!loading && slots.length && !selectedSlot">
+    <div class="booking-controls">
+      <label class="booking-date-input">
+        Choose a date
+        <input type="date" [ngModel]="selectedDateInput" (ngModelChange)="selectDateInput($event)" [min]="todayDateValue">
+      </label>
+
+      <label class="booking-service-select">
+        Service
+        <select [ngModel]="serviceFilter" (ngModelChange)="onServiceFilterChange($event)">
+          <option value="all">All services</option>
+          <option *ngFor="let service of serviceOptions" [value]="service">{{ service }}</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="booking-calendar" aria-label="Available booking dates">
+      <div class="booking-calendar-head">
+        <button type="button" class="calendar-nav" (click)="shiftCalendarMonth(-1)" aria-label="Previous month">←</button>
+        <h3>{{ calendarMonthLabel }}</h3>
+        <button type="button" class="calendar-nav" (click)="shiftCalendarMonth(1)" aria-label="Next month">→</button>
+      </div>
+
+      <div class="calendar-weekdays">
+        <span>Sun</span>
+        <span>Mon</span>
+        <span>Tue</span>
+        <span>Wed</span>
+        <span>Thu</span>
+        <span>Fri</span>
+        <span>Sat</span>
+      </div>
+
+      <div class="calendar-grid">
         <button
           type="button"
-          class="slot-card"
-          *ngFor="let slot of group.slots; trackBy: trackBySlot"
-          (click)="select(slot)">
-          <span class="slot-date">{{ formatDay(slot.date) }}</span>
-          <span class="slot-service">{{ slot.service }}</span>
-          <span class="slot-meta" *ngIf="slot.location">{{ slot.location }}</span>
-          <span class="slot-meta" *ngIf="slot.approxDurationMinutes">About {{ duration(slot.approxDurationMinutes) }}</span>
-          <span class="slot-fee">{{ money(slot.sessionFee) }} session</span>
-          <span class="slot-deposit">{{ money(slot.deposit) }} deposit to reserve</span>
+          class="calendar-day"
+          *ngFor="let day of calendarDays; trackBy: trackByCalendarDay"
+          [class.outside-month]="!day.inMonth"
+          [class.available]="day.available"
+          [class.selected]="day.selected"
+          [disabled]="!day.available"
+          (click)="selectCalendarDate(day)">
+          <span>{{ day.date ? parseDay(day.date).getDate() : '' }}</span>
         </button>
+      </div>
+    </div>
+
+    <div class="booking-groups">
+      <div class="booking-group" *ngFor="let group of slotGroups; trackBy: trackByGroup">
+        <h3>{{ group.label }}</h3>
+        <div class="booking-grid">
+          <button
+            type="button"
+            class="slot-card"
+            *ngFor="let slot of group.slots; trackBy: trackBySlot"
+            (click)="select(slot)">
+            <span class="slot-date">{{ formatDay(slot.date) }}</span>
+            <span class="slot-service">{{ slot.service }}</span>
+            <span class="slot-meta" *ngIf="slot.location">{{ slot.location }}</span>
+            <span class="slot-meta" *ngIf="slot.approxDurationMinutes">About {{ duration(slot.approxDurationMinutes) }}</span>
+            <span class="slot-fee">{{ money(slot.sessionFee) }} session</span>
+            <span class="slot-deposit">{{ money(slot.deposit) }} deposit to reserve</span>
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -84,7 +133,7 @@
 
       <div class="booking-actions">
         <button type="submit" class="booking-pay" [disabled]="submitting">
-          {{ submitting ? 'Starting checkout...' : 'Pay ' + money(slot.deposit) + ' deposit' }}
+          {{ submitting ? 'Starting checkout...' : 'Reserve ' + formatDay(slot.date) + ' with ' + money(slot.deposit) + ' deposit' }}
         </button>
         <button type="button" class="booking-back" (click)="cancel()" [disabled]="submitting">Pick another date</button>
       </div>

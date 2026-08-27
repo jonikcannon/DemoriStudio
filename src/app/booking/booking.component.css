@@ -13,6 +13,26 @@
 .booking-empty{padding:30px 0;color:#676961;font-size:15px}
 .underlined{background:none;border:0;padding:0;text-decoration:underline;cursor:pointer;color:#26362e;font:inherit}
 
+.booking-picker{display:grid;gap:24px}
+.booking-controls{display:flex;gap:16px;flex-wrap:wrap;align-items:end}
+.booking-date-input,.booking-service-select{display:grid;gap:8px;max-width:260px;font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:#5a5c55}
+.booking-date-input input,.booking-service-select select{border:1px solid #c8c9c0;background:white;padding:11px 12px;font:15px Arial,Helvetica,sans-serif;color:#1f211d}
+
+.booking-calendar{background:#fff;border:1px solid #d3d4cb;padding:18px}
+.booking-calendar-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.booking-calendar-head h3{margin:0;font-family:Georgia,serif;font-weight:400;font-size:22px;color:#1f2b24}
+.calendar-nav{width:34px;height:34px;border:1px solid #d3d4cb;background:#f8f7f4;cursor:pointer;color:#26362e;font-size:18px}
+.calendar-weekdays,.calendar-grid{display:grid;grid-template-columns:repeat(7, minmax(0,1fr));gap:6px}
+.calendar-weekdays{margin-bottom:8px;color:#5a5c55;font-size:11px;letter-spacing:.08em;text-transform:uppercase}
+.calendar-weekdays span{text-align:center;padding:4px 0}
+.calendar-grid{grid-auto-rows:minmax(56px, auto)}
+.calendar-day{display:flex;align-items:center;justify-content:center;padding:6px;border:1px solid #dfe1d9;background:#faf9f7;color:#1f2b24;cursor:pointer;transition:border-color .15s,transform .15s}
+.calendar-day:hover:not(:disabled){border-color:#26362e;transform:translateY(-1px)}
+.calendar-day.outside-month{opacity:.38}
+.calendar-day.available{background:#edf4ef;border-color:#a8bdb0}
+.calendar-day.selected{background:#26362e;color:#fff;border-color:#26362e}
+.calendar-day:disabled{cursor:not-allowed}
+
 .booking-group{margin-bottom:38px}
 .booking-group h3{font-family:Georgia,serif;font-weight:400;font-size:19px;margin:0 0 16px;color:#3d4a42}
 .booking-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
