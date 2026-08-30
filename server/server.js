@@ -183,7 +183,9 @@ async function sendBookingEmails(booking) {
   const lines = [
     `Service: ${booking.service}`,
     `Date: ${booking.date}`,
-    `Preferred time: ${booking.preferredTime || 'no preference given'}`,
+    // agreedTime wins: if the studio has already moved the shoot by hand, that
+    // is the time the client needs to see, not the one they picked at checkout.
+    `Start time: ${booking.agreedTime || booking.startTime || 'to be agreed'}`,
     booking.location ? `Location: ${booking.location}` : '',
     `Session fee: ${formatMoney(booking.sessionFee)}`,
     `Deposit paid: ${formatMoney(booking.deposit)}`,
@@ -199,7 +201,7 @@ async function sendBookingEmails(booking) {
       text: [
         `Thank you ${booking.name || ''}`.trim() + ',',
         '',
-        'Your date is reserved. We will be in touch to agree the exact start time.',
+        'Your session is reserved. We will be in touch if anything needs to move.',
         '',
         ...lines,
         '',
@@ -225,7 +227,7 @@ async function sendBookingEmails(booking) {
         '',
         booking.notes ? `Notes:\n${booking.notes}` : 'No notes supplied.',
         '',
-        'ACTION: agree a start time with the client.'
+        'The client booked this start time. Use the admin panel to move it if needed.'
       ].filter(Boolean).join('\n')
     });
   }
@@ -1286,7 +1288,6 @@ app.post('/api/booking/hold', rateLimit({ windowMs: 900000, max: 20, message: { 
     name,
     email,
     phone: String(req.body?.phone || '').trim(),
-    preferredTime: String(req.body?.preferredTime || '').trim(),
     notes: String(req.body?.notes || '').trim()
   });
   if (held.error) return res.status(held.status || 400).json({ error: held.error });
@@ -1297,8 +1298,8 @@ app.post('/api/booking/hold', rateLimit({ windowMs: 900000, max: 20, message: { 
     email: booking.email,
     items: [{
       productId: '',
-      sku: `BOOKING-${booking.date}`,
-      title: `${booking.service} session deposit (${booking.date})`,
+      sku: `BOOKING-${booking.date}${booking.startTime ? `-${booking.startTime}` : ''}`,
+      title: `${booking.service} session deposit (${booking.date}${booking.startTime ? ` at ${booking.startTime}` : ''})`,
       mediaType: 'image',
       imageKey: '',
       quantity: 1,
@@ -1358,19 +1359,28 @@ app.get('/api/admin/bookings', auth, (req, res) => {
 
 app.get('/api/admin/booking/slots', auth, (req, res) => {
   bookingStore.releaseExpiredHolds();
-  res.json({ slots: bookingStore.readSlots().sort((left, right) => String(left.date).localeCompare(String(right.date))) });
+  res.json({
+    slots: bookingStore.readSlots().sort((left, right) => (
+      String(left.date).localeCompare(String(right.date))
+      || String(left.startTime || '').localeCompare(String(right.startTime || ''))
+    ))
+  });
 });
 
+// Publishes one day's open hours; the store expands it into bookable starts.
 app.post('/api/admin/booking/slots', auth, (req, res) => {
-  const created = bookingStore.createSlot({
+  const created = bookingStore.publishDay({
     service: req.body?.service,
     date: req.body?.date,
+    openTime: req.body?.openTime,
+    closeTime: req.body?.closeTime,
     sessionFee: req.body?.sessionFee,
-    approxDurationMinutes: req.body?.approxDurationMinutes,
+    sessionMinutes: req.body?.sessionMinutes,
+    gapMinutes: req.body?.gapMinutes,
     location: req.body?.location
   });
   if (created.error) return res.status(400).json({ error: created.error });
-  res.status(201).json({ slot: created.slot });
+  res.status(201).json({ slots: created.slots, created: created.created, skipped: created.skipped });
 });
 
 app.delete('/api/admin/booking/slots/:id', auth, (req, res) => {

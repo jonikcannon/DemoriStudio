@@ -190,28 +190,33 @@
         <div class="admin-inquiries-tools">
           <label>Service<input type="text" [(ngModel)]="newSlot.service" name="slotService" placeholder="Aerial"></label>
           <label>Date<input type="date" [(ngModel)]="newSlot.date" name="slotDate"></label>
+          <label>Opens<input type="time" [(ngModel)]="newSlot.openTime" name="slotOpen"></label>
+          <label>Closes<input type="time" [(ngModel)]="newSlot.closeTime" name="slotClose"></label>
+          <label>Session minutes<input type="number" min="15" max="1440" [(ngModel)]="newSlot.sessionMinutes" name="slotDuration"></label>
+          <label>Gap minutes<input type="number" min="0" max="1440" [(ngModel)]="newSlot.gapMinutes" name="slotGap"></label>
           <label>Session fee ($)<input type="number" min="1" [(ngModel)]="newSlot.sessionFee" name="slotFee"></label>
-          <label>Approx minutes<input type="number" min="0" [(ngModel)]="newSlot.approxDurationMinutes" name="slotDuration"></label>
           <label>Location<input type="text" [(ngModel)]="newSlot.location" name="slotLocation" placeholder="Optional"></label>
-          <button type="button" class="underlined" (click)="createSlot()">Publish date +</button>
+          <button type="button" class="underlined" (click)="createSlot()">Publish day +</button>
           <button type="button" class="underlined" (click)="setAdminView('bookings')">Refresh <span>&#8635;</span></button>
         </div>
         <p class="error" *ngIf="adminBookingError">{{ adminBookingError }}</p>
+        <p class="admin-inquiries-meta" *ngIf="adminBookingNotice">{{ adminBookingNotice }}</p>
         <p class="admin-inquiries-meta" *ngIf="adminBookingLoading">Loading bookings...</p>
 
-        <p class="admin-inquiries-meta" *ngIf="!adminBookingLoading">Published dates ({{ adminSlots.length }})</p>
+        <p class="admin-inquiries-meta" *ngIf="!adminBookingLoading">Published sessions ({{ adminSlots.length }})</p>
         <div class="admin-inquiries-list" *ngIf="!adminBookingLoading && adminSlots.length">
           <article class="inquiry-card" *ngFor="let slot of adminSlots">
             <div class="inquiry-card-head">
-              <h4>{{ slot.date }} &middot; {{ slot.service }}</h4>
+              <h4>{{ slot.date }}<span *ngIf="slot.startTime"> at {{ slot.startTime }}</span> &middot; {{ slot.service }}</h4>
               <p>{{ slot.status }}</p>
             </div>
             <p class="inquiry-card-contact">
               {{ formatMoney(slot.sessionFee) }} session &middot; {{ formatMoney(slot.sessionFee / 4) }} deposit
+              <span *ngIf="slot.approxDurationMinutes"> &middot; {{ slot.approxDurationMinutes }} min</span>
               <span *ngIf="slot.location"> &middot; {{ slot.location }}</span>
             </p>
             <div class="inquiry-card-foot">
-              <button type="button" class="underlined" (click)="removeSlot(slot)" *ngIf="slot.status !== 'booked'">Remove date</button>
+              <button type="button" class="underlined" (click)="removeSlot(slot)" *ngIf="slot.status !== 'booked'">Remove session</button>
               <span class="inquiry-delivery" *ngIf="slot.status === 'booked'">Booked</span>
             </div>
           </article>
@@ -221,7 +226,7 @@
         <div class="admin-inquiries-list" *ngIf="!adminBookingLoading && adminBookings.length">
           <article class="inquiry-card" *ngFor="let booking of adminBookings">
             <div class="inquiry-card-head">
-              <h4>{{ booking.name }} &middot; {{ booking.date }}</h4>
+              <h4>{{ booking.name }} &middot; {{ booking.date }}<span *ngIf="booking.startTime"> at {{ booking.startTime }}</span></h4>
               <p>{{ booking.status }}</p>
             </div>
             <p class="inquiry-card-contact">
@@ -230,7 +235,7 @@
             </p>
             <p class="inquiry-card-message">
               Deposit {{ formatMoney(booking.deposit) }} paid &middot; balance {{ formatMoney(booking.balanceDue) }} due.
-              <span *ngIf="booking.preferredTime">Prefers {{ booking.preferredTime }}.</span>
+              <span *ngIf="booking.agreedTime">Moved to {{ booking.agreedTime }}.</span>
               <span *ngIf="booking.notes"> {{ booking.notes }}</span>
             </p>
             <div class="inquiry-card-foot" *ngIf="booking.status === 'confirmed'">

@@ -256,7 +256,17 @@ export class AppComponent implements OnInit {
   adminSlots: any[] = [];
   adminBookingError = '';
   adminBookingLoading = false;
-  newSlot = { service: 'Aerial', date: '', sessionFee: 800, approxDurationMinutes: 120, location: '' };
+  newSlot = {
+    service: 'Aerial',
+    date: '',
+    openTime: '09:00',
+    closeTime: '17:00',
+    sessionFee: 800,
+    sessionMinutes: 120,
+    gapMinutes: 30,
+    location: ''
+  };
+  adminBookingNotice = '';
 
   gallery: GalleryItem[] = [];
   get visibleWork() { return this.showAll ? this.work : this.work.slice(0, 4); }
@@ -826,6 +836,7 @@ export class AppComponent implements OnInit {
 
   async createSlot() {
     this.adminBookingError = '';
+    this.adminBookingNotice = '';
     if (!this.newSlot.date) {
       this.adminBookingError = 'Pick a date to publish.';
       return;
@@ -836,30 +847,39 @@ export class AppComponent implements OnInit {
       body: JSON.stringify({
         service: this.newSlot.service,
         date: this.newSlot.date,
+        openTime: this.newSlot.openTime,
+        closeTime: this.newSlot.closeTime,
         // The form takes whole dollars; the API works in cents throughout.
         sessionFee: Math.round(Number(this.newSlot.sessionFee) * 100),
-        approxDurationMinutes: Number(this.newSlot.approxDurationMinutes) || 0,
+        sessionMinutes: Number(this.newSlot.sessionMinutes) || 0,
+        gapMinutes: Number(this.newSlot.gapMinutes) || 0,
         location: this.newSlot.location
       })
     });
     const body = await response.json();
     if (!response.ok) {
-      this.adminBookingError = String(body?.error || 'Could not publish that date.');
+      this.adminBookingError = String(body?.error || 'Could not publish that day.');
       return;
     }
+    // Say what the hours actually expanded to -- publishing a day is the one
+    // admin action whose result is not obvious from the inputs.
+    const skipped = Number(body?.skipped) || 0;
+    this.adminBookingNotice = `Published ${body?.created} session${body?.created === 1 ? '' : 's'}`
+      + (skipped ? `, skipped ${skipped} already published or past.` : '.');
     this.newSlot.date = '';
     await this.loadAdminBookings();
     this.bookingSlots = [];
   }
 
   async removeSlot(slot: any) {
-    if (!await this.requestConfirmation(`Remove ${slot.date} from availability?`, 'Remove date')) return;
+    const label = slot.startTime ? `${slot.date} at ${slot.startTime}` : slot.date;
+    if (!await this.requestConfirmation(`Remove ${label} from availability?`, 'Remove session')) return;
     const response = await fetch(`${this.api}/admin/booking/slots/${encodeURIComponent(slot.id)}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${this.adminToken}` }
     });
     if (!response.ok) {
-      this.adminBookingError = String((await response.json())?.error || 'Could not remove that date.');
+      this.adminBookingError = String((await response.json())?.error || 'Could not remove that session.');
       return;
     }
     await this.loadAdminBookings();

@@ -5,8 +5,11 @@ import { FormsModule } from '@angular/forms';
 export type BookingSlot = {
   id: string;
   service: string;
-  /** Calendar day, YYYY-MM-DD. Sessions are booked by day; the start time is agreed afterwards. */
+  /** Calendar day, YYYY-MM-DD. One slot is one bookable start time on that day. */
   date: string;
+  /** 24-hour HH:MM. Empty on slots published before booking moved to clock times. */
+  startTime: string;
+  endTime: string;
   approxDurationMinutes: number;
   location: string;
   /** All money is in cents, matching the API. */
@@ -20,11 +23,11 @@ export type BookingRequest = {
   name: string;
   email: string;
   phone: string;
-  preferredTime: string;
   notes: string;
 };
 
-type SlotGroup = { label: string; slots: BookingSlot[] };
+/** One published day, with every start time still open on it. */
+type DayGroup = { date: string; label: string; slots: BookingSlot[] };
 
 @Component({
   selector: 'app-booking',
@@ -49,7 +52,7 @@ export class BookingComponent {
   serviceFilter = 'all';
   calendarMonth = new Date();
   formError = '';
-  form = { name: '', email: '', phone: '', preferredTime: '', notes: '' };
+  form = { name: '', email: '', phone: '', notes: '' };
 
   get visibleSlots(): BookingSlot[] {
     if (this.serviceFilter === 'all') return this.slots;
@@ -95,15 +98,23 @@ export class BookingComponent {
     return days;
   }
 
-  // Grouped by month so a long list of open days stays scannable.
-  get slotGroups(): SlotGroup[] {
-    const groups = new Map<string, SlotGroup>();
+  /** The open start times on the chosen day, in clock order. */
+  get timesForSelectedDate(): BookingSlot[] {
+    if (!this.selectedDateInput) return [];
+    return this.visibleSlots
+      .filter(slot => slot.date === this.selectedDateInput)
+      .sort((left, right) => String(left.startTime).localeCompare(String(right.startTime)));
+  }
+
+  // One entry per published day rather than per start time: with a full day of
+  // sessions a flat list would run to dozens of near-identical cards.
+  get dayGroups(): DayGroup[] {
+    const groups = new Map<string, DayGroup>();
     for (const slot of this.visibleSlots) {
-      const key = String(slot.date).slice(0, 7);
-      if (!groups.has(key)) groups.set(key, { label: this.formatMonth(slot.date), slots: [] });
-      groups.get(key)!.slots.push(slot);
+      if (!groups.has(slot.date)) groups.set(slot.date, { date: slot.date, label: this.formatDay(slot.date), slots: [] });
+      groups.get(slot.date)!.slots.push(slot);
     }
-    return Array.from(groups.values());
+    return Array.from(groups.values()).sort((left, right) => left.date.localeCompare(right.date));
   }
 
   // Dates are plain calendar days. Parsing them as local time avoids the
@@ -128,6 +139,23 @@ export class BookingComponent {
     return this.parseDay(date).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
   }
 
+  // Renders 24-hour "14:30" in the viewer's own convention, so a US visitor sees
+  // 2:30 PM without the studio having to publish times twice.
+  formatTime(time: string): string {
+    if (!/^\d{2}:\d{2}$/.test(String(time || ''))) return '';
+    const [hours, minutes] = time.split(':').map(Number);
+    const at = new Date();
+    at.setHours(hours, minutes, 0, 0);
+    return at.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  }
+
+  timeRange(slot: BookingSlot): string {
+    const start = this.formatTime(slot.startTime);
+    if (!start) return 'Time to be agreed';
+    const end = this.formatTime(slot.endTime);
+    return end ? `${start} – ${end}` : start;
+  }
+
   money(cents: number): string {
     return `$${((Number(cents) || 0) / 100).toFixed(2)}`;
   }
@@ -146,30 +174,30 @@ export class BookingComponent {
     this.calendarMonth = next;
   }
 
+  // Picking a day only opens that day's times -- the booking is not made until a
+  // start time is chosen, so a stray click on the calendar cannot skip ahead to
+  // the deposit form.
   selectCalendarDate(day: { date: string | null; slots: BookingSlot[] }) {
     if (!day.date || !day.slots.length) {
       this.formError = 'That date is not available for bookings yet.';
       return;
     }
     this.formError = '';
-    this.select(day.slots[0]);
+    this.selectedSlotId = '';
+    this.selectedDateInput = day.date;
   }
 
   selectDateInput(date: string) {
     this.selectedDateInput = date;
-    if (!date) {
-      this.selectedSlotId = '';
-      return;
-    }
+    this.selectedSlotId = '';
+    if (!date) return;
     this.calendarMonth = this.parseDay(date);
-    const slot = this.visibleSlots.find(next => next.date === date) || null;
-    if (!slot) {
-      this.formError = 'No open booking is available on that date for the selected service.';
-      this.selectedSlotId = '';
+    if (!this.visibleSlots.some(slot => slot.date === date)) {
+      this.formError = 'No sessions are open on that date for the selected service.';
+      this.selectedDateInput = '';
       return;
     }
     this.formError = '';
-    this.select(slot);
   }
 
   onServiceFilterChange(value: string) {
@@ -189,7 +217,15 @@ export class BookingComponent {
     this.formError = '';
   }
 
+  // Drops back to the chosen day's times rather than all the way to an empty
+  // calendar: someone changing their mind usually wants a different hour, not a
+  // different month.
   cancel() {
+    this.selectedSlotId = '';
+    this.formError = '';
+  }
+
+  clearDate() {
     this.selectedSlotId = '';
     this.selectedDateInput = '';
     this.formError = '';
@@ -214,7 +250,6 @@ export class BookingComponent {
       name,
       email,
       phone: this.form.phone.trim(),
-      preferredTime: this.form.preferredTime.trim(),
       notes: this.form.notes.trim()
     });
   }
@@ -227,7 +262,7 @@ export class BookingComponent {
     return day.date || `empty-${_}`;
   }
 
-  trackByGroup(_: number, group: SlotGroup) {
-    return group.label;
+  trackByGroup(_: number, group: DayGroup) {
+    return group.date;
   }
 }

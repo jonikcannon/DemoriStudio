@@ -2,23 +2,23 @@
   <div class="section-head">
     <div>
       <p class="eyebrow">BOOK A SESSION</p>
-      <h2>Reserve a date</h2>
+      <h2>Reserve a session</h2>
       <p class="booking-intro">
-        Pick an available day and secure it with a deposit. We agree the exact start
-        time together afterwards, so the shoot can follow the light and the tide.
+        Pick an available day, choose a start time and secure it with a deposit.
+        If the light or the tide means we should move, we will get in touch.
       </p>
     </div>
   </div>
 
   <div class="booking-loading" *ngIf="loading">
     <div class="spinner"></div>
-    <p>Loading available dates...</p>
+    <p>Loading available sessions...</p>
   </div>
 
   <p class="error" *ngIf="error">{{ error }}</p>
 
   <div class="booking-empty" *ngIf="!loading && !slots.length">
-    <p>No dates are open at the moment.</p>
+    <p>No sessions are open at the moment.</p>
     <button type="button" class="underlined" (click)="enquire.emit()">Ask about availability</button>
   </div>
 
@@ -71,21 +71,42 @@
       </div>
     </div>
 
-    <div class="booking-groups">
-      <div class="booking-group" *ngFor="let group of slotGroups; trackBy: trackByGroup">
-        <h3>{{ group.label }}</h3>
+    <!-- Times on the chosen day -->
+    <div class="booking-times" *ngIf="selectedDateInput && timesForSelectedDate.length">
+      <div class="booking-times-head">
+        <h3>{{ formatDay(selectedDateInput) }}</h3>
+        <button type="button" class="underlined" (click)="clearDate()">Clear</button>
+      </div>
+      <p class="booking-times-hint">{{ timesForSelectedDate.length }} start time{{ timesForSelectedDate.length === 1 ? '' : 's' }} open. Pick one to continue.</p>
+      <div class="time-grid">
+        <button
+          type="button"
+          class="time-chip"
+          *ngFor="let slot of timesForSelectedDate; trackBy: trackBySlot"
+          (click)="select(slot)">
+          <span class="time-chip-time">{{ formatTime(slot.startTime) || 'Time to be agreed' }}</span>
+          <span class="time-chip-meta">{{ slot.service }}</span>
+          <span class="time-chip-meta" *ngIf="slot.approxDurationMinutes">{{ duration(slot.approxDurationMinutes) }}</span>
+          <span class="time-chip-fee">{{ money(slot.deposit) }} deposit</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="booking-groups" *ngIf="!selectedDateInput">
+      <div class="booking-group">
+        <h3>Open days</h3>
         <div class="booking-grid">
           <button
             type="button"
             class="slot-card"
-            *ngFor="let slot of group.slots; trackBy: trackBySlot"
-            (click)="select(slot)">
-            <span class="slot-date">{{ formatDay(slot.date) }}</span>
-            <span class="slot-service">{{ slot.service }}</span>
-            <span class="slot-meta" *ngIf="slot.location">{{ slot.location }}</span>
-            <span class="slot-meta" *ngIf="slot.approxDurationMinutes">About {{ duration(slot.approxDurationMinutes) }}</span>
-            <span class="slot-fee">{{ money(slot.sessionFee) }} session</span>
-            <span class="slot-deposit">{{ money(slot.deposit) }} deposit to reserve</span>
+            *ngFor="let group of dayGroups; trackBy: trackByGroup"
+            (click)="selectDateInput(group.date)">
+            <span class="slot-date">{{ group.label }}</span>
+            <span class="slot-service">{{ group.slots.length }} time{{ group.slots.length === 1 ? '' : 's' }} open</span>
+            <span class="slot-meta" *ngIf="group.slots[0].location">{{ group.slots[0].location }}</span>
+            <span class="slot-meta" *ngIf="group.slots[0].approxDurationMinutes">{{ duration(group.slots[0].approxDurationMinutes) }} sessions</span>
+            <span class="slot-fee">{{ money(group.slots[0].sessionFee) }} session</span>
+            <span class="slot-deposit">{{ money(group.slots[0].deposit) }} deposit to reserve</span>
           </button>
         </div>
       </div>
@@ -95,8 +116,9 @@
   <!-- Details and deposit -->
   <div class="booking-form-wrap" *ngIf="!loading && selectedSlot as slot">
     <div class="booking-summary">
-      <p class="eyebrow">YOUR DATE</p>
+      <p class="eyebrow">YOUR SESSION</p>
       <h3>{{ formatDay(slot.date) }}</h3>
+      <p class="booking-summary-time">{{ timeRange(slot) }}</p>
       <p class="booking-summary-service">{{ slot.service }}<span *ngIf="slot.location"> · {{ slot.location }}</span></p>
       <dl class="booking-costs">
         <div><dt>Session fee</dt><dd>{{ money(slot.sessionFee) }}</dd></div>
@@ -104,7 +126,7 @@
         <div><dt>Balance on the day</dt><dd>{{ money(slot.balanceDue) }}</dd></div>
       </dl>
       <p class="booking-policy" *ngIf="refundPolicy">{{ refundPolicy }}</p>
-      <p class="booking-hold">This date is held for you for {{ holdMinutes }} minutes while you pay.</p>
+      <p class="booking-hold">This time is held for you for {{ holdMinutes }} minutes while you pay.</p>
     </div>
 
     <form class="booking-form" (ngSubmit)="submit()">
@@ -121,10 +143,6 @@
         <input type="tel" name="bookingPhone" [(ngModel)]="form.phone" autocomplete="tel">
       </label>
       <label>
-        Preferred time <span class="optional">optional</span>
-        <input type="text" name="bookingTime" [(ngModel)]="form.preferredTime" placeholder="Sunrise, golden hour, mid-morning...">
-      </label>
-      <label>
         Anything we should know <span class="optional">optional</span>
         <textarea name="bookingNotes" [(ngModel)]="form.notes" placeholder="Location access, the story you want told, number of people..."></textarea>
       </label>
@@ -133,9 +151,9 @@
 
       <div class="booking-actions">
         <button type="submit" class="booking-pay" [disabled]="submitting">
-          {{ submitting ? 'Starting checkout...' : 'Reserve ' + formatDay(slot.date) + ' with ' + money(slot.deposit) + ' deposit' }}
+          {{ submitting ? 'Starting checkout...' : 'Reserve ' + formatDay(slot.date) + ' at ' + formatTime(slot.startTime) + ' with ' + money(slot.deposit) + ' deposit' }}
         </button>
-        <button type="button" class="booking-back" (click)="cancel()" [disabled]="submitting">Pick another date</button>
+        <button type="button" class="booking-back" (click)="cancel()" [disabled]="submitting">Pick another time</button>
       </div>
     </form>
   </div>

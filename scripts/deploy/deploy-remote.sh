@@ -4,7 +4,7 @@ set -euo pipefail
 # Deploy from a workstation on the same LAN as the server.
 #
 #   bash scripts/deploy/deploy-remote.sh
-#   DEPLOY_TARGET=utctigers@192.168.4.55 bash scripts/deploy/deploy-remote.sh
+#   DEPLOY_TARGET=utctigers@192.168.4.60 bash scripts/deploy/deploy-remote.sh
 #   DEPLOY_TARGET=demori bash scripts/deploy/deploy-remote.sh    # via ~/.ssh/config
 #
 # This is the manual path. It needs no GitHub runner and works today, which
@@ -15,7 +15,7 @@ set -euo pipefail
 # It deploys what is on the server's tracked branch, not your working copy:
 # deploy.sh does a git pull. Push your commits first.
 
-DEPLOY_TARGET="${DEPLOY_TARGET:-utctigers@192.168.4.55}"
+DEPLOY_TARGET="${DEPLOY_TARGET:-utctigers@192.168.4.60}"
 KEY_NAME="${KEY_NAME:-demori_oracle}"
 APP_DIR="${APP_DIR:-/var/www/demori/app}"
 

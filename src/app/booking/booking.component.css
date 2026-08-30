@@ -73,3 +73,16 @@
 
 @media(max-width:820px){.booking-form-wrap{grid-template-columns:1fr}}
 @media(max-width:700px){.booking{padding:72px 7vw}}
+
+/* Times on the chosen day */
+.booking-times{margin:0 0 34px;border:1px solid #dfe1d9;background:#faf9f7;padding:22px 20px}
+.booking-times-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.booking-times-head h3{font-family:Georgia,serif;font-weight:400;font-size:20px;margin:0;color:#26362e}
+.booking-times-hint{font-size:12px;color:#5a5c55;margin:4px 0 16px}
+.time-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
+.time-chip{display:grid;gap:3px;justify-items:start;text-align:left;padding:12px 14px;border:1px solid #c8d3cb;background:white;color:#1f2b24;cursor:pointer;transition:border-color .15s,transform .15s}
+.time-chip:hover{border-color:#26362e;transform:translateY(-1px)}
+.time-chip-time{font-size:16px;font-weight:bold;letter-spacing:.02em}
+.time-chip-meta{font-size:11px;color:#6b7a71}
+.time-chip-fee{font-size:11px;font-weight:bold;letter-spacing:.05em;color:#26362e;margin-top:2px}
+.booking-summary-time{font-size:15px;font-weight:bold;color:#f2f5f3;margin:0 0 4px}

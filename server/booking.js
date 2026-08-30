@@ -1,21 +1,26 @@
-// Self-serve session booking: published days, deposit-confirmed reservations.
+// Self-serve session booking: published start times, deposit-confirmed
+// reservations.
 //
-// Flow: the studio publishes available DAYS -> a client picks one, gives a
-// preferred time and pays a deposit -> the Stripe webhook confirms it -> the
-// exact start time is agreed afterwards. Slots are day-level on purpose: a
-// shoot's real start depends on light, tide, travel and the client, so
-// committing to a clock time at checkout would only create reschedules.
+// Flow: the studio publishes a DAY and its open hours -> the server expands that
+// into start times -> a client picks one and pays a deposit -> the Stripe
+// webhook confirms it. The client commits to a clock time at checkout; the
+// studio can still move a booked shoot afterwards via agreedTime, which is what
+// absorbs the light, tide and travel that make a photography start time slip.
 //
-// Between picking and paying, a day is HELD rather than booked, so two people
-// cannot buy the same day while one is still on the Stripe page. An unpaid hold
-// expires and the day returns to the pool.
+// Booking used to be day-level for exactly that reason, with the time agreed
+// afterwards. It is now time-level so a day can carry several sessions and the
+// client leaves checkout knowing when to turn up.
+//
+// Between picking and paying, a start time is HELD rather than booked, so two
+// people cannot buy the same time while one is still on the Stripe page. An
+// unpaid hold expires and the time returns to the pool.
 //
 // Concurrency note: hold/release/confirm do their read-modify-write with no
 // await in between. Node runs one turn of the event loop at a time, so within a
 // single process that sequence cannot interleave. PM2 runs this app in fork mode
 // with one instance (scripts/deploy/ecosystem.config.cjs) -- if that ever becomes
 // cluster mode or more than one instance, this needs a real lock, because two
-// processes could each read "open" for the same day.
+// processes could each read "open" for the same start time.
 //
 // Session fees are set per slot rather than read from the services list, whose
 // prices are display strings ("$6 each") with no machine-readable amount.
@@ -32,6 +37,18 @@ const SLOT = Object.freeze({ OPEN: 'open', HELD: 'held', BOOKED: 'booked', BLOCK
 const BOOKING = Object.freeze({ PENDING: 'pending', CONFIRMED: 'confirmed', CANCELLED: 'cancelled', EXPIRED: 'expired' });
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+// The studio publishes a day and its open hours; the server expands that into
+// the individual start times clients can actually book. Expanding at publish
+// time -- rather than computing the grid on every read -- keeps one slot row per
+// bookable start, so the hold/book/release logic below still operates on a
+// single row and needs no second store for per-time state.
+const DEFAULT_SESSION_MINUTES = 120;
+const DEFAULT_GAP_MINUTES = 30;
+// A day cannot be carved into more starts than this. Guards against a typo like
+// a 1-minute session turning one publish into thousands of rows.
+const MAX_STARTS_PER_DAY = 48;
 
 // Deposit is a share of the session fee, so it scales with the job instead of
 // under-securing an expensive shoot.
@@ -75,6 +92,52 @@ function today() {
 
 function isPastDate(date) {
   return String(date || '') < today();
+}
+
+function toMinutes(time) {
+  const [hours, minutes] = String(time || '').split(':').map(Number);
+  return (hours * 60) + minutes;
+}
+
+function toTime(minutes) {
+  const wrapped = Math.max(0, Math.round(minutes));
+  return `${String(Math.floor(wrapped / 60)).padStart(2, '0')}:${String(wrapped % 60).padStart(2, '0')}`;
+}
+
+// Sessions do not run past midnight: publishDay cannot generate one, so an
+// overrun only comes from hand-edited data. Clamp rather than render "25:00".
+function endTimeFor(startTime, sessionMinutes) {
+  if (!TIME_PATTERN.test(String(startTime || ''))) return '';
+  return toTime(Math.min(toMinutes(startTime) + (Number(sessionMinutes) || 0), (23 * 60) + 59));
+}
+
+// Start times run from the opening time until the last one whose session still
+// finishes by closing time, spaced by the session plus the gap between shoots.
+function generateStartTimes({ openTime, closeTime, sessionMinutes, gapMinutes }) {
+  const open = toMinutes(openTime);
+  const close = toMinutes(closeTime);
+  const session = Math.round(Number(sessionMinutes) || 0);
+  const gap = Math.max(0, Math.round(Number(gapMinutes) || 0));
+  const times = [];
+  for (let start = open; start + session <= close; start += session + gap) {
+    times.push(toTime(start));
+    if (times.length >= MAX_STARTS_PER_DAY) break;
+  }
+  return times;
+}
+
+// A start time is spent once it has passed, so today's earlier sessions drop off
+// the list during the day rather than at midnight. Slots written before booking
+// moved to clock times have no startTime; those stay day-level and only expire
+// when the whole day has passed.
+function isPastSlot(slot) {
+  const date = String(slot?.date || '');
+  if (date < today()) return true;
+  if (date > today()) return false;
+  const startTime = String(slot?.startTime || '');
+  if (!TIME_PATTERN.test(startTime)) return false;
+  const now = new Date();
+  return toMinutes(startTime) <= (now.getHours() * 60) + now.getMinutes();
 }
 
 function ensureStore() {
@@ -143,10 +206,13 @@ function releaseExpiredHolds(now = Date.now()) {
 
 function publicSlot(slot) {
   const deposit = depositFor(slot.sessionFee);
+  const startTime = String(slot.startTime || '');
   return {
     id: slot.id,
     service: slot.service,
     date: slot.date,
+    startTime,
+    endTime: slot.endTime || endTimeFor(startTime, slot.approxDurationMinutes),
     approxDurationMinutes: slot.approxDurationMinutes || 0,
     location: slot.location || '',
     sessionFee: slot.sessionFee,
@@ -155,16 +221,19 @@ function publicSlot(slot) {
   };
 }
 
-// Only future, genuinely open days are offered.
+// Only genuinely open start times still in the future are offered.
 function listOpenSlots({ from = '', to = '', service = '' } = {}) {
   const { slots } = releaseExpiredHolds();
   const wantedService = String(service || '').trim().toLowerCase();
   return slots
     .filter(slot => slot.status === SLOT.OPEN)
-    .filter(slot => !isPastDate(slot.date))
+    .filter(slot => !isPastSlot(slot))
     .filter(slot => (!from || slot.date >= from) && (!to || slot.date <= to))
     .filter(slot => !wantedService || String(slot.service || '').toLowerCase() === wantedService)
-    .sort((left, right) => String(left.date).localeCompare(String(right.date)))
+    .sort((left, right) => (
+      String(left.date).localeCompare(String(right.date))
+      || String(left.startTime || '').localeCompare(String(right.startTime || ''))
+    ))
     .map(publicSlot);
 }
 
@@ -176,47 +245,97 @@ function findBooking(id) {
   return readBookings().find(booking => booking.id === String(id || '')) || null;
 }
 
-function createSlot({ service, date, sessionFee, approxDurationMinutes = 0, location = '' }) {
+// Publishes one day's open hours and expands it into bookable start times.
+// Re-publishing the same day is safe and additive: start times that already
+// exist are skipped rather than duplicated, so widening a day's hours adds only
+// the new sessions and never disturbs one that is already held or booked.
+function publishDay({
+  service,
+  date,
+  openTime,
+  closeTime,
+  sessionFee,
+  sessionMinutes = DEFAULT_SESSION_MINUTES,
+  gapMinutes = DEFAULT_GAP_MINUTES,
+  location = ''
+}) {
   if (!String(service || '').trim()) return { error: 'Service is required.' };
   const day = String(date || '').trim();
   if (!DATE_PATTERN.test(day) || Number.isNaN(Date.parse(`${day}T00:00:00`))) {
     return { error: 'Date must be a calendar date in YYYY-MM-DD form.' };
   }
   if (isPastDate(day)) return { error: 'That date is in the past.' };
+
+  const open = String(openTime || '').trim();
+  const close = String(closeTime || '').trim();
+  if (!TIME_PATTERN.test(open)) return { error: 'Opening time must be a 24-hour time in HH:MM form.' };
+  if (!TIME_PATTERN.test(close)) return { error: 'Closing time must be a 24-hour time in HH:MM form.' };
+  if (toMinutes(close) <= toMinutes(open)) return { error: 'Closing time must be after the opening time.' };
+
   const fee = Math.round(Number(sessionFee) || 0);
   if (!Number.isInteger(fee) || fee < 100) return { error: 'Session fee must be at least 100 (in cents).' };
-  const duration = Math.round(Number(approxDurationMinutes) || 0);
-  if (duration && (duration < 15 || duration > 1440)) return { error: 'Approximate duration must be between 15 and 1440 minutes.' };
+
+  const session = Math.round(Number(sessionMinutes) || 0);
+  if (session < 15 || session > 1440) return { error: 'Session length must be between 15 and 1440 minutes.' };
+  const gap = Math.round(Number(gapMinutes) || 0);
+  if (gap < 0 || gap > 1440) return { error: 'Gap between sessions must be between 0 and 1440 minutes.' };
+  if (toMinutes(open) + session > toMinutes(close)) {
+    return { error: 'A session of that length does not fit between the opening and closing times.' };
+  }
+
+  const starts = generateStartTimes({ openTime: open, closeTime: close, sessionMinutes: session, gapMinutes: gap });
+  if (!starts.length) return { error: 'Those hours produce no bookable sessions.' };
+
+  const serviceName = String(service).trim();
+  const existing = new Set(
+    readSlots()
+      .filter(slot => slot.date === day && String(slot.service || '').toLowerCase() === serviceName.toLowerCase())
+      .map(slot => String(slot.startTime || ''))
+  );
 
   const now = new Date().toISOString();
-  return {
-    slot: appendSlot({
+  const created = [];
+  let skipped = 0;
+  for (const startTime of starts) {
+    if (existing.has(startTime)) { skipped += 1; continue; }
+    // A start time earlier today is already gone; publishing it would create a
+    // row that listOpenSlots immediately filters back out.
+    if (isPastSlot({ date: day, startTime })) { skipped += 1; continue; }
+    created.push(appendSlot({
       id: randomUUID(),
-      service: String(service).trim(),
+      service: serviceName,
       date: day,
+      startTime,
+      endTime: endTimeFor(startTime, session),
       sessionFee: fee,
-      approxDurationMinutes: duration,
+      approxDurationMinutes: session,
+      gapMinutes: gap,
       location: String(location || '').trim(),
       status: SLOT.OPEN,
       holdUntil: '',
       bookingId: '',
       createdAt: now,
       updatedAt: now
-    })
-  };
+    }));
+  }
+
+  if (!created.length) {
+    return { error: 'Every session in those hours is already published or has passed.' };
+  }
+  return { slots: created, created: created.length, skipped };
 }
 
 // Read-modify-write with no await inside, so the open -> held transition cannot
 // interleave with another request in this process.
-function holdSlot(slotId, { name, email, phone = '', preferredTime = '', notes = '' }) {
+function holdSlot(slotId, { name, email, phone = '', notes = '' }) {
   releaseExpiredHolds();
   const slots = readSlots();
   const index = slots.findIndex(slot => slot.id === String(slotId || ''));
-  if (index < 0) return { error: 'That date is no longer available.', status: 404 };
+  if (index < 0) return { error: 'That session is no longer available.', status: 404 };
 
   const slot = slots[index];
-  if (slot.status !== SLOT.OPEN) return { error: 'That date has just been taken. Please pick another.', status: 409 };
-  if (isPastDate(slot.date)) return { error: 'That date has already passed.', status: 409 };
+  if (slot.status !== SLOT.OPEN) return { error: 'That time has just been taken. Please pick another.', status: 409 };
+  if (isPastSlot(slot)) return { error: 'That time has already passed.', status: 409 };
 
   const now = new Date();
   const deposit = depositFor(slot.sessionFee);
@@ -225,8 +344,10 @@ function holdSlot(slotId, { name, email, phone = '', preferredTime = '', notes =
     slotId: slot.id,
     service: slot.service,
     date: slot.date,
-    // The clock time is agreed after booking; this is the client's preference.
-    preferredTime: String(preferredTime || '').trim().slice(0, 120),
+    // The start time the client actually booked. agreedTime stays as the
+    // studio's override for when a shoot is later moved by hand.
+    startTime: String(slot.startTime || ''),
+    endTime: String(slot.endTime || endTimeFor(slot.startTime, slot.approxDurationMinutes)),
     agreedTime: '',
     approxDurationMinutes: slot.approxDurationMinutes || 0,
     location: slot.location || '',
@@ -349,6 +470,9 @@ module.exports = {
   refundPolicyText,
   today,
   isPastDate,
+  isPastSlot,
+  generateStartTimes,
+  endTimeFor,
   releaseExpiredHolds,
   listOpenSlots,
   publicSlot,
@@ -356,7 +480,7 @@ module.exports = {
   readBookings,
   findSlot,
   findBooking,
-  createSlot,
+  publishDay,
   holdSlot,
   attachOrder,
   updateBooking,
