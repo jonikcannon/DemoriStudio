@@ -267,6 +267,14 @@ export class AppComponent implements OnInit {
     location: ''
   };
   adminBookingNotice = '';
+  adminBlocks: any[] = [];
+  // Mon-Fri is the case this exists for: a day job that rules out weekday hours.
+  newBlock = { weekdays: [1, 2, 3, 4, 5], startTime: '09:00', endTime: '17:00', reason: '' };
+  readonly weekdayOptions = [
+    { value: 1, label: 'Mon' }, { value: 2, label: 'Tue' }, { value: 3, label: 'Wed' },
+    { value: 4, label: 'Thu' }, { value: 5, label: 'Fri' }, { value: 6, label: 'Sat' },
+    { value: 0, label: 'Sun' }
+  ];
 
   gallery: GalleryItem[] = [];
   get visibleWork() { return this.showAll ? this.work : this.work.slice(0, 4); }
@@ -820,13 +828,15 @@ export class AppComponent implements OnInit {
     this.adminBookingError = '';
     try {
       const headers = { Authorization: `Bearer ${this.adminToken}` };
-      const [bookingsRes, slotsRes] = await Promise.all([
+      const [bookingsRes, slotsRes, blocksRes] = await Promise.all([
         fetch(`${this.api}/admin/bookings`, { headers }),
-        fetch(`${this.api}/admin/booking/slots`, { headers })
+        fetch(`${this.api}/admin/booking/slots`, { headers }),
+        fetch(`${this.api}/admin/booking/blocks`, { headers })
       ]);
-      if (!bookingsRes.ok || !slotsRes.ok) throw new Error('Booking data unavailable');
+      if (!bookingsRes.ok || !slotsRes.ok || !blocksRes.ok) throw new Error('Booking data unavailable');
       this.adminBookings = (await bookingsRes.json())?.bookings || [];
       this.adminSlots = (await slotsRes.json())?.slots || [];
+      this.adminBlocks = (await blocksRes.json())?.blocks || [];
     } catch (error) {
       console.error('Admin booking data could not be loaded.', error);
       this.adminBookingError = 'Could not load bookings.';
@@ -867,6 +877,51 @@ export class AppComponent implements OnInit {
     this.adminBookingNotice = `Published ${body?.created} session${body?.created === 1 ? '' : 's'}`
       + (skipped ? `, skipped ${skipped} already published or past.` : '.');
     this.newSlot.date = '';
+    await this.loadAdminBookings();
+    this.bookingSlots = [];
+  }
+
+  toggleBlockWeekday(day: number) {
+    const next = new Set(this.newBlock.weekdays);
+    if (next.has(day)) next.delete(day); else next.add(day);
+    this.newBlock.weekdays = Array.from(next).sort();
+  }
+
+  async createBlock() {
+    this.adminBookingError = '';
+    this.adminBookingNotice = '';
+    if (!this.newBlock.weekdays.length) {
+      this.adminBookingError = 'Pick at least one weekday to block.';
+      return;
+    }
+    const response = await fetch(`${this.api}/admin/booking/blocks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.adminToken}` },
+      body: JSON.stringify(this.newBlock)
+    });
+    const body = await response.json();
+    if (!response.ok) {
+      this.adminBookingError = String(body?.error || 'Could not add that block.');
+      return;
+    }
+    const hidden = Number(body?.hiddenSessions) || 0;
+    this.adminBookingNotice = hidden
+      ? `Block added. It hides ${hidden} already published session${hidden === 1 ? '' : 's'}.`
+      : 'Block added. No published sessions fall inside it.';
+    await this.loadAdminBookings();
+    this.bookingSlots = [];
+  }
+
+  async removeBlock(block: any) {
+    if (!await this.requestConfirmation(`Stop blocking ${block.label}?`, 'Remove block')) return;
+    const response = await fetch(`${this.api}/admin/booking/blocks/${encodeURIComponent(block.id)}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${this.adminToken}` }
+    });
+    if (!response.ok) {
+      this.adminBookingError = String((await response.json())?.error || 'Could not remove that block.');
+      return;
+    }
     await this.loadAdminBookings();
     this.bookingSlots = [];
   }

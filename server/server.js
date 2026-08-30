@@ -1389,6 +1389,41 @@ app.delete('/api/admin/booking/slots/:id', auth, (req, res) => {
   res.json({ ok: true });
 });
 
+// Recurring unavailability, e.g. Mon-Fri 09:00-17:00 for a day job. Reports how
+// many already-published sessions each block hides, so the effect of adding one
+// is visible without hunting through the calendar.
+app.get('/api/admin/booking/blocks', auth, (req, res) => {
+  const blocks = bookingStore.readBlocks();
+  const slots = bookingStore.readSlots().filter(slot => slot.status === bookingStore.SLOT.OPEN);
+  res.json({
+    blocks: blocks.map(block => ({
+      ...block,
+      label: bookingStore.blockLabel(block),
+      hiddenSessions: slots.filter(slot => bookingStore.slotIsBlocked(slot, [block])).length
+    }))
+  });
+});
+
+app.post('/api/admin/booking/blocks', auth, (req, res) => {
+  const created = bookingStore.createBlock({
+    weekdays: req.body?.weekdays,
+    startTime: req.body?.startTime,
+    endTime: req.body?.endTime,
+    reason: req.body?.reason
+  });
+  if (created.error) return res.status(400).json({ error: created.error });
+  const hidden = bookingStore.readSlots()
+    .filter(slot => slot.status === bookingStore.SLOT.OPEN)
+    .filter(slot => bookingStore.slotIsBlocked(slot, [created.block])).length;
+  res.status(201).json({ block: created.block, hiddenSessions: hidden });
+});
+
+app.delete('/api/admin/booking/blocks/:id', auth, (req, res) => {
+  const removed = bookingStore.deleteBlock(String(req.params.id || ''));
+  if (removed.error) return res.status(removed.status || 400).json({ error: removed.error });
+  res.json({ ok: true });
+});
+
 // Records the start time once studio and client have agreed it.
 app.patch('/api/admin/bookings/:id/time', auth, (req, res) => {
   const updated = bookingStore.setAgreedTime(String(req.params.id || ''), req.body?.agreedTime);

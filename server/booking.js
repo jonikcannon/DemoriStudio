@@ -32,6 +32,7 @@ const { randomUUID } = require('crypto');
 const bookingDir = path.join(__dirname, '../storage/bookings');
 const slotsFile = path.join(bookingDir, 'slots.jsonl');
 const bookingsFile = path.join(bookingDir, 'bookings.jsonl');
+const blocksFile = path.join(bookingDir, 'blocks.jsonl');
 
 const SLOT = Object.freeze({ OPEN: 'open', HELD: 'held', BOOKED: 'booked', BLOCKED: 'blocked' });
 const BOOKING = Object.freeze({ PENDING: 'pending', CONFIRMED: 'confirmed', CANCELLED: 'cancelled', EXPIRED: 'expired' });
@@ -49,6 +50,17 @@ const DEFAULT_GAP_MINUTES = 30;
 // A day cannot be carved into more starts than this. Guards against a typo like
 // a 1-minute session turning one publish into thousands of rows.
 const MAX_STARTS_PER_DAY = 48;
+
+// Recurring unavailability: "Mon-Fri 09:00-17:00" for a day job, say. A block is
+// a weekly rule rather than a row per date, so it keeps applying to months that
+// have not been published yet.
+//
+// Blocks are applied in two places on purpose. publishDay skips blocked starts
+// so they are never written, and listOpenSlots filters them so a block added
+// later also hides sessions that were already published. Filtering at read
+// affects only OPEN slots, so a block can never hide a session someone has
+// already paid for -- those are the studio's problem to move by hand.
+const WEEKDAY_NAMES = Object.freeze(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']);
 
 // Deposit is a share of the session fee, so it scales with the job instead of
 // under-securing an expensive shoot.
@@ -162,20 +174,19 @@ function writeFile(file, rows) {
 
 const readSlots = () => readFile(slotsFile);
 const readBookings = () => readFile(bookingsFile);
+const readBlocks = () => readFile(blocksFile);
 const writeSlots = rows => writeFile(slotsFile, rows);
 const writeBookings = rows => writeFile(bookingsFile, rows);
+const writeBlocks = rows => writeFile(blocksFile, rows);
 
-function appendSlot(slot) {
+function appendFileRow(file, row) {
   ensureStore();
-  fs.appendFileSync(slotsFile, `${JSON.stringify(slot)}\n`, 'utf8');
-  return slot;
+  fs.appendFileSync(file, `${JSON.stringify(row)}\n`, 'utf8');
+  return row;
 }
 
-function appendBooking(booking) {
-  ensureStore();
-  fs.appendFileSync(bookingsFile, `${JSON.stringify(booking)}\n`, 'utf8');
-  return booking;
-}
+const appendSlot = slot => appendFileRow(slotsFile, slot);
+const appendBooking = booking => appendFileRow(bookingsFile, booking);
 
 // An abandoned Stripe page must not keep a day off the market forever. Sweeping
 // on read means no timer is needed and a restart cannot lose pending releases.
@@ -204,6 +215,79 @@ function releaseExpiredHolds(now = Date.now()) {
   return { slots: nextSlots, released: expired.length };
 }
 
+function weekdayOf(date) {
+  const [year, month, day] = String(date || '').split('-').map(Number);
+  return new Date(year, (month || 1) - 1, day || 1).getDay();
+}
+
+function blockLabel(block) {
+  const days = [...block.weekdays].sort().map(day => WEEKDAY_NAMES[day]).join(', ');
+  return `${days} ${block.startTime}-${block.endTime}`;
+}
+
+function createBlock({ weekdays, startTime, endTime, reason = '' }) {
+  const days = Array.from(new Set(
+    (Array.isArray(weekdays) ? weekdays : [weekdays])
+      .map(Number)
+      .filter(day => Number.isInteger(day) && day >= 0 && day <= 6)
+  ));
+  if (!days.length) return { error: 'Pick at least one weekday to block.' };
+
+  const from = String(startTime || '').trim();
+  const to = String(endTime || '').trim();
+  if (!TIME_PATTERN.test(from)) return { error: 'Block start must be a 24-hour time in HH:MM form.' };
+  if (!TIME_PATTERN.test(to)) return { error: 'Block end must be a 24-hour time in HH:MM form.' };
+  // A window that wraps past midnight would need splitting across two weekdays.
+  // Ask for two blocks instead of silently getting the second day wrong.
+  if (toMinutes(to) <= toMinutes(from)) {
+    return { error: 'Block end must be after the start. For an overnight block, add one block per day.' };
+  }
+
+  const now = new Date().toISOString();
+  return {
+    block: appendFileRow(blocksFile, {
+      id: randomUUID(),
+      weekdays: days.sort(),
+      startTime: from,
+      endTime: to,
+      reason: String(reason || '').trim().slice(0, 120),
+      createdAt: now
+    })
+  };
+}
+
+function deleteBlock(blockId) {
+  const blocks = readBlocks();
+  if (!blocks.some(block => block.id === blockId)) return { error: 'Block not found.', status: 404 };
+  writeBlocks(blocks.filter(block => block.id !== blockId));
+  return { ok: true };
+}
+
+// True when a session on `date` running [startTime, endTime) touches any blocked
+// window. Half-open on both sides, so a session ending exactly at 09:00 does not
+// collide with a block starting at 09:00.
+function isBlocked(date, startTime, endTime, blocks = readBlocks()) {
+  if (!TIME_PATTERN.test(String(startTime || ''))) return false;
+  const weekday = weekdayOf(date);
+  const from = toMinutes(startTime);
+  const to = TIME_PATTERN.test(String(endTime || '')) ? toMinutes(endTime) : from;
+  return blocks.some(block => (
+    Array.isArray(block.weekdays)
+    && block.weekdays.includes(weekday)
+    && from < toMinutes(block.endTime)
+    && to > toMinutes(block.startTime)
+  ));
+}
+
+function slotIsBlocked(slot, blocks) {
+  return isBlocked(
+    slot.date,
+    slot.startTime,
+    slot.endTime || endTimeFor(slot.startTime, slot.approxDurationMinutes),
+    blocks
+  );
+}
+
 function publicSlot(slot) {
   const deposit = depositFor(slot.sessionFee);
   const startTime = String(slot.startTime || '');
@@ -225,9 +309,11 @@ function publicSlot(slot) {
 function listOpenSlots({ from = '', to = '', service = '' } = {}) {
   const { slots } = releaseExpiredHolds();
   const wantedService = String(service || '').trim().toLowerCase();
+  const blocks = readBlocks();
   return slots
     .filter(slot => slot.status === SLOT.OPEN)
     .filter(slot => !isPastSlot(slot))
+    .filter(slot => !slotIsBlocked(slot, blocks))
     .filter(slot => (!from || slot.date >= from) && (!to || slot.date <= to))
     .filter(slot => !wantedService || String(slot.service || '').toLowerCase() === wantedService)
     .sort((left, right) => (
@@ -293,14 +379,17 @@ function publishDay({
       .map(slot => String(slot.startTime || ''))
   );
 
+  const blocks = readBlocks();
   const now = new Date().toISOString();
   const created = [];
   let skipped = 0;
+  let blocked = 0;
   for (const startTime of starts) {
     if (existing.has(startTime)) { skipped += 1; continue; }
     // A start time earlier today is already gone; publishing it would create a
     // row that listOpenSlots immediately filters back out.
     if (isPastSlot({ date: day, startTime })) { skipped += 1; continue; }
+    if (isBlocked(day, startTime, endTimeFor(startTime, session), blocks)) { blocked += 1; continue; }
     created.push(appendSlot({
       id: randomUUID(),
       service: serviceName,
@@ -320,9 +409,13 @@ function publishDay({
   }
 
   if (!created.length) {
-    return { error: 'Every session in those hours is already published or has passed.' };
+    return {
+      error: blocked
+        ? `Every session in those hours is blocked, already published or has passed (${blocked} blocked).`
+        : 'Every session in those hours is already published or has passed.'
+    };
   }
-  return { slots: created, created: created.length, skipped };
+  return { slots: created, created: created.length, skipped, blocked };
 }
 
 // Read-modify-write with no await inside, so the open -> held transition cannot
@@ -336,6 +429,8 @@ function holdSlot(slotId, { name, email, phone = '', notes = '' }) {
   const slot = slots[index];
   if (slot.status !== SLOT.OPEN) return { error: 'That time has just been taken. Please pick another.', status: 409 };
   if (isPastSlot(slot)) return { error: 'That time has already passed.', status: 409 };
+  // A page loaded before the studio added a block would still offer this time.
+  if (slotIsBlocked(slot)) return { error: 'That time is no longer available. Please pick another.', status: 409 };
 
   const now = new Date();
   const deposit = depositFor(slot.sessionFee);
@@ -463,6 +558,8 @@ module.exports = {
   DEPOSIT_RATE,
   slotsFile,
   bookingsFile,
+  blocksFile,
+  WEEKDAY_NAMES,
   ensureStore,
   depositFor,
   holdMinutes,
@@ -478,6 +575,13 @@ module.exports = {
   publicSlot,
   readSlots,
   readBookings,
+  readBlocks,
+  createBlock,
+  deleteBlock,
+  isBlocked,
+  slotIsBlocked,
+  blockLabel,
+  weekdayOf,
   findSlot,
   findBooking,
   publishDay,

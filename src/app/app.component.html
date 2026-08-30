@@ -187,7 +187,7 @@
       </section>
 
       <section class="admin-inquiries" *ngIf="adminView === 'bookings'">
-        <div class="admin-inquiries-tools">
+        <div class="admin-inquiries-tools admin-booking-tools">
           <label>Service<input type="text" [(ngModel)]="newSlot.service" name="slotService" placeholder="Aerial"></label>
           <label>Date<input type="date" [(ngModel)]="newSlot.date" name="slotDate"></label>
           <label>Opens<input type="time" [(ngModel)]="newSlot.openTime" name="slotOpen"></label>
@@ -202,6 +202,36 @@
         <p class="error" *ngIf="adminBookingError">{{ adminBookingError }}</p>
         <p class="admin-inquiries-meta" *ngIf="adminBookingNotice">{{ adminBookingNotice }}</p>
         <p class="admin-inquiries-meta" *ngIf="adminBookingLoading">Loading bookings...</p>
+
+        <p class="admin-inquiries-meta" *ngIf="!adminBookingLoading">Blocked hours ({{ adminBlocks.length }})</p>
+        <div class="admin-blocks" *ngIf="!adminBookingLoading">
+          <div class="admin-block-form">
+            <div class="weekday-toggles">
+              <button
+                type="button"
+                class="weekday-toggle"
+                *ngFor="let day of weekdayOptions"
+                [class.on]="newBlock.weekdays.includes(day.value)"
+                (click)="toggleBlockWeekday(day.value)">{{ day.label }}</button>
+            </div>
+            <label>From<input type="time" [(ngModel)]="newBlock.startTime" name="blockStart"></label>
+            <label>To<input type="time" [(ngModel)]="newBlock.endTime" name="blockEnd"></label>
+            <label>Reason<input type="text" [(ngModel)]="newBlock.reason" name="blockReason" placeholder="Day job"></label>
+            <button type="button" class="underlined" (click)="createBlock()">Block hours +</button>
+          </div>
+          <p class="admin-block-hint">
+            Blocked hours never appear as bookable times, on days already published or published later.
+            Sessions someone has already paid for are never hidden.
+          </p>
+          <ul class="admin-block-list" *ngIf="adminBlocks.length">
+            <li *ngFor="let block of adminBlocks">
+              <span class="admin-block-label">{{ block.label }}</span>
+              <span class="admin-block-reason" *ngIf="block.reason">{{ block.reason }}</span>
+              <span class="admin-block-count">hides {{ block.hiddenSessions }}</span>
+              <button type="button" class="underlined" (click)="removeBlock(block)">Remove</button>
+            </li>
+          </ul>
+        </div>
 
         <p class="admin-inquiries-meta" *ngIf="!adminBookingLoading">Published sessions ({{ adminSlots.length }})</p>
         <div class="admin-inquiries-list" *ngIf="!adminBookingLoading && adminSlots.length">

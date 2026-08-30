@@ -82,3 +82,27 @@
 	.admin-quick,.cart-quick{font-size:11px;padding:10px 12px;min-height:40px}
 }
 
+
+/* Booking admin: publish form has more fields than the shared tools grid. */
+.admin-booking-tools{grid-template-columns:repeat(auto-fit,minmax(130px,1fr))}
+
+/* Recurring blocked hours */
+.admin-blocks{border:1px solid #dfe1d9;background:#faf9f7;padding:16px 18px;margin:0 0 22px}
+.admin-block-form{display:grid;grid-template-columns:auto repeat(3,minmax(110px,1fr)) auto;gap:12px;align-items:end}
+.weekday-toggles{display:flex;gap:4px;flex-wrap:wrap}
+.weekday-toggle{border:1px solid #c8d3cb;background:white;color:#3d4a42;padding:9px 10px;font-size:11px;font-weight:bold;letter-spacing:.05em;cursor:pointer}
+.weekday-toggle.on{background:#26362e;border-color:#26362e;color:#f2f5f3}
+.admin-block-hint{font-size:11px;line-height:1.5;color:#6b7a71;margin:12px 0 0}
+.admin-block-list{list-style:none;margin:14px 0 0;padding:0;display:grid;gap:8px}
+.admin-block-list li{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;border-top:1px solid #e6e8e0;padding-top:8px;font-size:13px}
+.admin-block-label{font-weight:bold;color:#26362e}
+.admin-block-reason{color:#6b7a71}
+.admin-block-count{color:#8a9a90;font-size:11px;margin-left:auto}
+@media(max-width:900px){.admin-block-form{grid-template-columns:1fr 1fr}.weekday-toggles{grid-column:1/-1}}
+
+/* Grid items are blockified but their inputs are not, so label text and input
+   sit on one line and overflow into the next column -- which put the publish
+   and block buttons on top of the Location and Reason fields. Stack them. */
+.admin-booking-tools label,.admin-block-form label{display:block;min-width:0;font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;color:#5f625d}
+.admin-booking-tools label input,.admin-block-form label input{display:block;width:100%;margin-top:5px;border:1px solid #9ea198;background:#f4f2ec;padding:7px 8px;font:13px Arial,Helvetica,sans-serif;color:#1f211d}
+.admin-booking-tools .underlined,.admin-block-form .underlined{white-space:nowrap;justify-self:start}
