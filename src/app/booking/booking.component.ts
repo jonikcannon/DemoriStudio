@@ -50,7 +50,7 @@ export class BookingComponent {
   selectedSlotId = '';
   selectedDateInput = '';
   serviceFilter = 'all';
-  calendarMonth = new Date();
+  calendarMonth = this.firstOfMonth(new Date());
   formError = '';
   form = { name: '', email: '', phone: '', notes: '' };
 
@@ -131,6 +131,12 @@ export class BookingComponent {
     return `${year}-${month}-${day}`;
   }
 
+  // Anchored to day 1 so `setMonth` can never overflow into the wrong month --
+  // e.g. a Jan 31 anchor plus one month rolls over to Mar 3 in plain JS Date math.
+  private firstOfMonth(date: Date): Date {
+    return new Date(date.getFullYear(), date.getMonth(), 1);
+  }
+
   formatDay(date: string): string {
     return this.parseDay(date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
   }
@@ -169,9 +175,7 @@ export class BookingComponent {
   }
 
   shiftCalendarMonth(offset: number) {
-    const next = new Date(this.calendarMonth);
-    next.setMonth(next.getMonth() + offset);
-    this.calendarMonth = next;
+    this.calendarMonth = new Date(this.calendarMonth.getFullYear(), this.calendarMonth.getMonth() + offset, 1);
   }
 
   // Picking a day only opens that day's times -- the booking is not made until a
@@ -190,14 +194,15 @@ export class BookingComponent {
   selectDateInput(date: string) {
     this.selectedDateInput = date;
     this.selectedSlotId = '';
+    // Cleared up front so emptying the date input also clears a message left by
+    // the previous pick, rather than leaving it stranded over a blank calendar.
+    this.formError = '';
     if (!date) return;
-    this.calendarMonth = this.parseDay(date);
+    this.calendarMonth = this.firstOfMonth(this.parseDay(date));
     if (!this.visibleSlots.some(slot => slot.date === date)) {
       this.formError = 'No sessions are open on that date for the selected service.';
       this.selectedDateInput = '';
-      return;
     }
-    this.formError = '';
   }
 
   onServiceFilterChange(value: string) {
@@ -207,7 +212,7 @@ export class BookingComponent {
     this.formError = '';
     const firstAvailable = this.visibleSlots[0];
     if (firstAvailable) {
-      this.calendarMonth = this.parseDay(firstAvailable.date);
+      this.calendarMonth = this.firstOfMonth(this.parseDay(firstAvailable.date));
     }
   }
 

@@ -144,10 +144,23 @@ npm run manifest -- --local   # force the local-disk listing
 - **`API_BASE_URL` in `.env` points at `api.demori.studio`, which is NXDOMAIN.**
   Every load logs `Product API request failed; falling back to gallery-derived
   products only.` The catalog still fills from the manifest, which is why this
-  goes unnoticed. `media-url.ts` defaults `apiBaseUrl` to `/api`, which
+  goes unnoticed — but the Booking tab has no such fallback: it shows "No
+  sessions are open" with `Availability could not be loaded` instead of a
+  calendar. `media-url.ts` defaults `apiBaseUrl` to `/api`, which
   `proxy.conf.json` routes to :3000 in dev and nginx routes in prod — so
   commenting out `API_BASE_URL` is the fix. Until then, treat that one console
   error and that one failed request as expected baseline noise.
+- **Commenting out `API_BASE_URL` in `.env` does nothing until the manifest
+  regenerates.** The value is baked once into `src/assets/media-config.json`
+  by `generate-gallery-manifest.js` (`apiBaseUrl` key) and read from there at
+  runtime — editing `.env` alone leaves the stale bad URL in that JSON file.
+  Re-run `npm run manifest` (or restart via `npm start`, which runs it as
+  `prestart`) and hard-reload the page. Confirm the fix by reading
+  `src/assets/media-config.json` and checking `apiBaseUrl` is `""`.
+- **`npm run <script>` can fail with `PSSecurityException: UnauthorizedAccess`**
+  when PowerShell's execution policy blocks `npm.ps1`. Run the underlying
+  script directly instead, e.g. `node scripts/generate-gallery-manifest.js` in
+  place of `npm run manifest`.
 - **`favicon.ico` 404s.** Cosmetic, pre-existing.
 - **`npm install` while the dev servers are running kills them** — it rewrites
   `node_modules` under `ng serve`. Install first, then start.
@@ -174,3 +187,5 @@ npm run manifest -- --local   # force the local-disk listing
 | `manifest fetch failed: HTTP 404` from `urls` | Express (:3000) is down — `ng serve` proxies `/assets/gallery` to it. |
 | `urls` reports failures | A manifest entry points at a missing object. Re-run `npm run manifest`; if it persists, the bucket and manifest disagree. |
 | Catalog renders but every card is dark/empty | The R2 bucket is unreachable. Check `MEDIA_CDN_URL` and that the URLs in the manifest are absolute. |
+| Booking tab shows "No sessions are open" / `Availability could not be loaded`, `net::ERR_NAME_NOT_RESOLVED` for `api.demori.studio` | Stale `apiBaseUrl` in `src/assets/media-config.json` from a bad `API_BASE_URL` in `.env`. Comment out `API_BASE_URL`, re-run `npm run manifest` (or `node scripts/generate-gallery-manifest.js` if npm is blocked), then reload. |
+| `npm run manifest` (or any `npm run ...`) fails with `PSSecurityException: UnauthorizedAccess` | PowerShell execution policy is blocking `npm.ps1`. Run the script directly, e.g. `node scripts/generate-gallery-manifest.js`. |

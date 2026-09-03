@@ -39,6 +39,10 @@
       </label>
     </div>
 
+    <!-- Picking a date can fail (no sessions that day for the chosen service).
+         The form below is not on screen yet, so its error line cannot report it. -->
+    <p class="error" *ngIf="formError">{{ formError }}</p>
+
     <div class="booking-calendar" aria-label="Available booking dates">
       <div class="booking-calendar-head">
         <button type="button" class="calendar-nav" (click)="shiftCalendarMonth(-1)" aria-label="Previous month">←</button>
