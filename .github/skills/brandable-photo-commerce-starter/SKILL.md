@@ -17,6 +17,9 @@ Before creating files, collect or confirm:
 - Company name, public site title, short description, and domain.
 - Primary contact email and intended admin email.
 - Business type and the services, gallery categories, and products to feature.
+  The chosen gallery categories become the media folder skeleton
+  (`storage/media/<category-key>`), so settle the category keys here, not
+  after the copy.
 - Brand direction: logo/wordmark, colours, type direction, and supplied assets.
 - Whether the new company will use Cloudflare R2, Google Drive, Stripe, SMTP,
   and the included VPS/Nginx deployment path.
@@ -48,31 +51,167 @@ key capabilities:
   limiting, security headers, and email notifications.
 - VPS deployment scripts, Nginx configuration, and GitHub Actions deployment.
 
+## Content Builder Requirement
+
+The destination must be usable as a content-managed business site after the
+initial clone. Do not leave the new owner dependent on editing Angular source
+files for routine changes. Treat this as a single-business content system in
+the first version, with a clean path to multi-tenant isolation later.
+
+### Content domains
+
+Keep runtime content separate from operational records and generated media:
+
+- `storage/content/site-content.json`: site identity, navigation labels and
+  visibility, hero, statement, contact details, policies, about copy, service
+  definitions, and portfolio/work cards.
+- `storage/products/products.json`: shop products, prices, publication state,
+  and delivery metadata. Do not duplicate product records in site content.
+- `storage/media/descriptions.json` and the generated gallery manifest: public
+  gallery filenames, captions, and descriptions. Do not edit the generated
+  manifest from the admin UI.
+- Booking slots, inquiries, orders, and fulfilment records: operational data;
+  these remain separate and must not be editable through a generic content
+  JSON endpoint.
+
+Expose a public `GET /api/content` endpoint containing only published,
+non-secret site content. Expose an authenticated `GET/PATCH /api/admin/content`
+endpoint for structured section updates. Validate each section server-side,
+apply field length limits, reject arbitrary HTML and filesystem paths, and
+write atomically with a backup or revision number. A free-form JSON editor is
+acceptable as a recovery tool, but it must not be the primary editor.
+
+If the source scaffold does not yet provide this API and editor, treat that as
+a scaffold-readiness gap: implement it in the source before using this skill
+for a production clone, or explicitly report that the destination is only
+brand-configurable and still requires developer changes for content editing.
+Do not claim that a clone is content-managed merely because its admin login or
+product uploader exists.
+
+The admin builder should include, at minimum:
+
+- Site settings: brand name, title, description, contact email, social links,
+  footer text, and SEO/social metadata.
+- Navigation: ordered tabs, labels, visibility, and the requested feature
+  flags for Catalog, Services, Book, and About.
+- Hero and home sections: eyebrow, headline, intro, CTA label/target, hero
+  media reference, poster, statement heading, and supporting copy.
+- About: heading, paragraphs, portrait/media reference, and CTA.
+- Services: add, reorder, hide, and edit service name, icon, title, copy,
+  media, pricing tiers, add-ons, and inquiry behavior.
+- Work/portfolio cards: add, reorder, hide, and edit title, category, media,
+  and optional description.
+- Gallery metadata: edit title/description and move a media item by using
+  existing safe media APIs; never allow arbitrary public or private path
+  access.
+
+Use references to existing media keys rather than embedding uploads in the
+content document. The media picker should list only public gallery media and
+show a preview, media type, and accessible alt text. Product/private sale
+media continues through its existing authenticated storage flow.
+
+### Content migration and fallback
+
+Before converting the Angular templates, inventory every hard-coded public
+value in `src/app/` and seed the new content document with its current value.
+The Angular app should load `/api/content` at startup and use a tracked,
+brand-neutral defaults file when the API is unavailable or the document is
+new. Preserve the current gallery manifest and product loading behavior while
+moving only identity, home, about, service, work, navigation, and contact
+content into the content model. A failed content request must show the public
+site with defaults, not a blank shell.
+
+### Admin and security acceptance criteria
+
+- The same authenticated admin token must authorize password and Google
+  login sessions; do not gate editing on the provider string.
+- Content writes must be limited to the configured admin identity, use the
+  existing bearer auth middleware, and be covered by rate limiting and audit
+  timestamps. Never expose `.env`, service-account files, private sale media,
+  inquiries, orders, or booking records through public content responses.
+- Reject unknown keys, oversized strings/arrays, unsafe URLs, and media paths
+  outside the public gallery namespace. Escape content in Angular templates;
+  do not add an unsafe HTML editor unless sanitization and a narrowly scoped
+  allowlist are implemented.
+- Add API tests for unauthenticated reads/writes, malformed payloads, atomic
+  writes, fallback behavior, and an end-to-end smoke check for each kept tab.
+
+For a later multi-business product, add a tenant/site identifier to every
+content, product, and media record and replace the single `ADMIN_EMAIL` model
+with users, roles, tenant-scoped authorization, revisions, and audit logs. Do
+not imply that the first single-business JSON store provides those guarantees.
+
 ## Copy the Scaffold
 
 1. Confirm the source contains `package.json`, `angular.json`, `src/`,
-   `server/`, `scripts/`, and `.env.example`.
+   `server/`, `scripts/`, and `.env.example`. If `.env.example` is absent,
+   stop and either add a complete non-secret example file to the source or
+   explicitly record that the scaffold is not ready for cloning; do not copy a
+   real `.env` as a substitute.
 2. Create `DESTINATION` and copy the source tree without copying any local,
-   generated, or customer-specific data. On Windows, run this from the source
-   root using PowerShell:
+   generated, or customer-specific data — and without any image or video
+   assets. Media is excluded both by directory and by file extension; the new
+   site gets an empty, tab-appropriate folder skeleton (step 3) and the new
+   company's own media later, never Demori-owned photos or footage. On
+   Windows, run this from the source root using PowerShell:
 
    ```powershell
    New-Item -ItemType Directory -Force -Path $destination | Out-Null
-   robocopy . $destination /E /XD .git node_modules dist .angular storage\media storage\uploads storage\quarantine storage\products storage\inquiries storage\orders storage\bookings storage\sale-photos\originals storage\sale-photos\deliveries /XF .env .oauth-token.json client_secret_*.json demoristudios-*.json filezilla_*.xml media-config.json
+   robocopy . $destination /E /XD .git node_modules dist .angular storage\media storage\uploads storage\quarantine storage\products storage\inquiries storage\orders storage\bookings storage\sale-photos\originals storage\sale-photos\deliveries /XF .env .oauth-token.json client_secret_*.json demoristudios-*.json filezilla_*.xml media-config.json *.jpg *.jpeg *.png *.gif *.webp *.avif *.mp4 *.mov *.m4v *.webm *.heic *.tif *.tiff
    if ($LASTEXITCODE -gt 7) { throw "Scaffold copy failed with robocopy exit code $LASTEXITCODE" }
    ```
 
    Assign `$destination` a fully resolved path before running it. `robocopy`
-   exit codes `0` through `7` are successful copy outcomes.
-3. Restore the tracked empty directory markers and safe starter directories:
+   exit codes `0` through `7` are successful copy outcomes. The extension
+   exclusions intentionally also drop loose source assets such as
+   `src/assets/hero-poster.jpg` and the about portrait. If the new brand
+   needs a favicon or logo file, add it from the new company's own assets —
+   never by exempting source media from the exclusion list.
+3. Build the empty folder skeleton from the tabs and gallery categories the
+   business actually chose — never a blanket restore of the source's folders,
+   and never any media files. This step creates only directories and marker
+   files:
 
    ```powershell
-   New-Item -ItemType Directory -Force -Path storage\media, storage\uploads, storage\inquiries, storage\products, storage\orders, storage\bookings, storage\sale-photos\originals, storage\sale-photos\deliveries | Out-Null
-   New-Item -ItemType File -Force -Path storage\uploads\.gitignore, storage\sale-photos\originals\.gitkeep, storage\sale-photos\deliveries\.gitkeep | Out-Null
+   # Always: Home and the Contact panel are structural
+   New-Item -ItemType Directory -Force -Path storage\media\hero, storage\inquiries, storage\content, storage\uploads | Out-Null
+   New-Item -ItemType File -Force -Path storage\uploads\.gitignore | Out-Null
+
+   # One folder per gallery category key chosen for the business
+   New-Item -ItemType Directory -Force -Path storage\media\<category-key> | Out-Null
+
+   # Only when Catalog was kept (one previews folder per category)
+   New-Item -ItemType Directory -Force -Path storage\products, storage\orders, storage\sale-photos\originals, storage\sale-photos\deliveries, src\assets\shop\previews\<category-key> | Out-Null
+   New-Item -ItemType File -Force -Path storage\sale-photos\originals\.gitkeep, storage\sale-photos\deliveries\.gitkeep | Out-Null
+
+   # Only when Book was kept
+   New-Item -ItemType Directory -Force -Path storage\bookings | Out-Null
    ```
 
+   Tab-to-folder mapping:
+
+   | Kept feature | Folders to create |
+   | --- | --- |
+   | Always (Home + Contact) | `storage/media/hero`, `storage/inquiries`, `storage/content`, `storage/uploads` |
+   | Each chosen gallery category | `storage/media/<category-key>` (plus `src/assets/shop/previews/<category-key>` when Catalog is kept) |
+   | About | keep an `about` media folder if the portrait stays under `assets/gallery/about/`; that folder doubles as the "Others" gallery bucket |
+   | Catalog | `storage/products`, `storage/orders`, `storage/sale-photos/originals`, `storage/sale-photos/deliveries` |
+   | Book | `storage/bookings` |
+   | Services | no extra folders; service media references existing gallery categories |
+
+   `storage/media/hero/` is deliberate and always created: the home hero
+   media lives there, outside `CATEGORIES`, so it never becomes a gallery
+   item. `scripts/setup-media.js` (prestart/prebuild) also creates every
+   `CATEGORIES` folder automatically, so the load-bearing change is editing
+   `CATEGORIES` in `scripts/media-dir.js` to the new category keys — the
+   manual folders only make the tree complete before the first run. Match
+   the display-side lists to the same categories: `categoryOrder` in
+   `src/app/app.component.ts`, `categories` in
+   `src/app/gallery/gallery.component.ts`, and `categoryLabels` in
+   `scripts/generate-gallery-manifest.js`.
+
    Copy `storage/media/README.md` if it was excluded by the directory copy, and
-   do not create fake gallery assets or customer records.
+   do not create fake gallery assets, placeholder photos, or customer records.
 4. Initialize a new Git repository in `DESTINATION`. Do not copy the source
    `.git` history, credentials, `.env`, R2/Google service-account files,
    media, runtime records, generated manifests, or installed dependencies.
@@ -92,9 +231,13 @@ old brand/domain before declaring it complete.
 2. Rebrand the UI in `src/app/` and `src/styles.css`:
    - Replace company name, contact details, service descriptions, navigation
      copy, product copy, policies, logo treatment, and brand colours.
-   - Update actual hard-coded media references in `app.component.ts` and the
-     about/service components. Use neutral local placeholders only when new
-     brand media is unavailable; do not retain Demori-owned image or video URLs.
+   - Replace every hard-coded media reference in `app.component.ts` and the
+     about/service components — the hero video and poster, the about
+     portrait, service images/posters, and any stock URLs. No media was
+     copied, so each reference must point at media supplied by the new
+     company or at a neutral local placeholder checked in under the new
+     category folders; never retain or hot-link Demori-owned image or video
+     URLs, and never re-copy source media to fill a gap.
    - Preserve accessible labels, responsive layout behaviour, cart, catalog,
      booking, and admin flows.
 3. Configure operational defaults:
@@ -144,10 +287,12 @@ cleanly in `DESTINATION` rather than leaving a dead or half-configured feature:
 
 ## Media and Integrations
 
-- Gallery media is public and served from Cloudflare R2 when `R2_*` and
-  `MEDIA_CDN_URL` are configured. With no R2 configuration, it is served from
-  `storage/media/` locally. Run `npm run manifest -- --local` for an empty or
-  local starter library.
+- The clone ships with an empty media library by design — no images or
+  videos are copied. Gallery media is public and served from Cloudflare R2
+  when `R2_*` and `MEDIA_CDN_URL` are configured. With no R2 configuration,
+  it is served from `storage/media/` locally. Run `npm run manifest -- --local`
+  for an empty or local starter library, and populate the library only with
+  the new company's own media (admin upload or `npm run media:sync`).
 - Product/sale media is separate from gallery media and uses Google Drive through
   authenticated API routes. Configure a new Drive folder and service account;
   never reuse source credentials or buyer media.
@@ -179,6 +324,24 @@ a Product or Price in the Stripe dashboard, only the account and API keys.
   `server/server.js` (catalog/cart checkout) and the inline `price_data` in the
   `/api/booking/hold` handler (booking deposits). If the new business needs a
   different currency, update both.
+- **Preserve the order-before-redirect flow.** The API writes a pending order
+  before sending the browser to Stripe, then attaches the returned Checkout
+  Session ID. Keep `orderId` in Stripe metadata and `client_reference_id` so a
+  webhook can reliably find the local order; do not depend on success-page
+  navigation as proof of payment.
+- **Preserve webhook idempotency.** `checkout.session.completed` can be
+  delivered more than once. Keep the stored session/payment-intent IDs and the
+  idempotent `markPaid`/fulfilment behavior so retries never send duplicate
+  downloads, emails, or print jobs. Keep the webhook route's raw request body
+  handling intact because Stripe signature verification requires it.
+- **Booking checkout has a rollback path.** A booking slot is held before its
+  deposit Checkout Session is created; if Stripe session creation fails, cancel
+  the booking and release the slot immediately. Never leave a failed payment
+  attempt blocking the calendar until the normal hold timeout.
+- **Validate digital delivery input.** Cart checkouts containing digital items
+  require a valid delivery email, store the email in the order, and pass it to
+  Stripe as `customer_email`; retain this validation when changing product or
+  checkout copy.
 - **Refunds are manual.** There is no auto-refund flow; `bookingStore`'s
   refund-policy text and the admin cancel-booking action only track whether a
   deposit is inside the refund window (`booking.js`) — the operator issues the
@@ -205,8 +368,11 @@ The build is the primary check: it must compile after the project key, branding,
 and source changes. Then start the full stack with `npm start` and verify the
 home page and every *kept* tab (catalog/cart, services/inquiry, booking, about)
 load, plus the admin sign-in surface. Confirm a dropped tab has no residual nav
-link, console error, or dead route. Do not treat payment, mail, Drive, or R2
-calls as successful until their new credentials are configured and tested.
+link, console error, or dead route. Because no media was copied, an empty
+gallery and placeholder hero/about/service slots are expected — verify there
+are no 404s pointing at source-project media paths or the old CDN hostname.
+Do not treat payment, mail, Drive, or R2 calls as successful until their new
+credentials are configured and tested.
 
 A freshly copied project has no `storage/bookings/*.jsonl` rows, so the
 Booking tab correctly renders its "No sessions are open" empty state rather
@@ -221,6 +387,7 @@ correcting and the manifest step re-run — see the note in Branding Pass step 3
 
 Report the destination path, new package/application identifiers, completed
 branding substitutions, which nav tabs were kept vs. dropped (and what was
-removed for each dropped tab), intentionally retained features, excluded
-data/secrets, and validation results. List integrations still requiring
+removed for each dropped tab), the folder skeleton created for the kept tabs
+and chosen gallery categories, intentionally retained features, excluded
+data/secrets/media, and validation results. List integrations still requiring
 customer-provided credentials or media. Do not commit unless asked.

@@ -209,6 +209,21 @@ API responds before reporting success. See
 - Filter by search text, service, and status.
 - Update inquiry status (`New`, `In progress`, `Closed`) directly in the dashboard.
 
+## Admin site content
+
+The admin modal's **Site content** tab edits the public business shell without
+requiring a source edit. It currently covers the business name, description,
+contact details, hero copy, and navigation visibility. Content is persisted in
+`storage/content/site-content.json`; the API creates it on the first save and
+keeps a backup at `site-content.json.bak`.
+
+The public app reads content from `GET /api/content` and falls back to tracked
+neutral defaults if the API or runtime file is unavailable. Products, gallery
+metadata, bookings, inquiries, orders, and private delivery remain separate
+domains and are managed through their existing flows. Content fields are
+escaped Angular values; arbitrary HTML and private filesystem paths are not
+accepted.
+
 ## Runtime data
 
 The API persists products to `storage/products/products.json` and inquiries to

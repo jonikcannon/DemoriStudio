@@ -1,10 +1,10 @@
 <header class="nav">
-  <a class="brand" (click)="activeSection = 'home'; menuOpen = false"><span>DE</span>MORI <i>STUDIO</i></a>
+  <a class="brand" (click)="activeSection = 'home'; menuOpen = false">{{ content.site.brand }}</a>
   <nav [class.open]="menuOpen">
-    <a [class.active]="activeSection === 'products'" (click)="activeSection = 'products'; menuOpen = false">Catalog</a>
-    <a [class.active]="activeSection === 'services'" (click)="activeSection = 'services'; menuOpen = false">Services</a>
-    <a [class.active]="activeSection === 'booking'" (click)="openBooking()">Book</a>
-    <a [class.active]="activeSection === 'about'" (click)="activeSection = 'about'; menuOpen = false">About</a>
+    <a *ngIf="content.navigation.catalog.visible" [class.active]="activeSection === 'products'" (click)="activeSection = 'products'; menuOpen = false">{{ content.navigation.catalog.label }}</a>
+    <a *ngIf="content.navigation.services.visible" [class.active]="activeSection === 'services'" (click)="activeSection = 'services'; menuOpen = false">{{ content.navigation.services.label }}</a>
+    <a *ngIf="content.navigation.booking.visible" [class.active]="activeSection === 'booking'" (click)="openBooking()">{{ content.navigation.booking.label }}</a>
+    <a *ngIf="content.navigation.about.visible" [class.active]="activeSection === 'about'" (click)="activeSection = 'about'; menuOpen = false">{{ content.navigation.about.label }}</a>
   </nav>
   <button class="admin-quick" type="button" (click)="adminOpen ? closeAdmin() : openAdmin()">{{ adminToken ? 'Manage products' : 'Admin login' }}</button>
   <button class="cart-quick" type="button" (click)="openCartView()">Cart <span>{{ activeCartCount }}</span></button>
@@ -13,7 +13,7 @@
 
 <main id="top">
   <section class="hero" *ngIf="activeSection === 'home'">
-    <div class="hero-copy"><p class="eyebrow">PHOTOGRAPHY + DRONE AERIALS</p><h1>Made to make<br><em>you look twice.</em></h1><p class="intro">Thoughtful imagery for the places, people, and stories worth remembering.</p><button class="underlined" (click)="activeSection = 'products'">Explore the catalog <span>↓</span></button></div>
+    <div class="hero-copy"><p class="eyebrow">{{ content.hero.eyebrow }}</p><h1>{{ content.hero.headline }}</h1><p class="intro">{{ content.hero.intro }}</p><button class="underlined" (click)="activeSection = content.hero.ctaTarget">{{ content.hero.ctaLabel }} <span>↓</span></button></div>
     <!-- [muted]="true" binds the PROPERTY, not the attribute. A bare `muted`
          only reflects to the property when the browser parses static HTML;
          Angular creates the element and then sets attributes, so the property
@@ -22,7 +22,7 @@
     <div class="hero-image"><video [src]="heroVideo" [poster]="heroPoster" [muted]="true" autoplay loop playsinline disablepictureinpicture aria-label="Aerial drone footage: surf breaking over a rocky shoreline"></video><div class="hero-stamp">EST. 2014<br><b>✦</b><br>NEW YORK · BEYOND</div></div>
   </section>
 
-  <section class="statement" *ngIf="activeSection === 'home'"><p class="eyebrow">A DIFFERENT PERSPECTIVE</p><h2>Images with a sense<br>of <em>place</em> and feeling.</h2><div class="statement-note">From the ground to the sky, we make photographs that feel both immediate and lasting.<span>↘</span></div></section>
+  <section class="statement" *ngIf="activeSection === 'home'"><p class="eyebrow">{{ content.statement.eyebrow }}</p><h2>{{ content.statement.heading }}</h2><div class="statement-note">{{ content.statement.copy }}<span>↘</span></div></section>
 
   <section class="catalog-controls" *ngIf="activeSection === 'products'">
     <div class="section-head">
@@ -93,7 +93,7 @@
 
   <app-about *ngIf="activeSection === 'about'" (contactClick)="activeSection = 'contact'"></app-about>
 
-  <section id="contact" class="contact" *ngIf="activeSection === 'contact'"><p class="eyebrow">LET'S MAKE SOMETHING</p><h2>Have a story in mind?<br><em>Let's talk.</em></h2><a href="mailto:hello@demori.studio" class="contact-link">hello&#64;demori.studio <span>↗</span></a></section>
+  <section id="contact" class="contact" *ngIf="activeSection === 'contact'"><p class="eyebrow">{{ content.contact.eyebrow }}</p><h2>{{ content.contact.heading }}</h2><a [href]="'mailto:' + content.contact.email" class="contact-link">{{ content.contact.email }} <span>↗</span></a></section>
 </main>
 
 <div class="cart-drawer-backdrop" *ngIf="isCartOpen" (click)="closeCartView()">
@@ -134,10 +134,32 @@
 
     <div *ngIf="adminToken" class="admin-body admin-modal-body">
       <div class="admin-tabs" role="tablist" aria-label="Admin sections">
+        <button type="button" [class.active]="adminView === 'content'" (click)="setAdminView('content')">Site content</button>
         <button type="button" [class.active]="adminView === 'products'" (click)="setAdminView('products')">Products</button>
         <button type="button" [class.active]="adminView === 'inquiries'" (click)="setAdminView('inquiries')">Inquiries <span>{{ inquiries.length }}</span></button>
         <button type="button" [class.active]="adminView === 'bookings'" (click)="setAdminView('bookings')">Bookings <span>{{ adminBookings.length }}</span></button>
       </div>
+
+      <section class="admin-products" *ngIf="adminView === 'content'">
+        <form (ngSubmit)="saveSiteContent()">
+          <h4>Site identity</h4>
+          <label>Business name<input [(ngModel)]="content.site.brand" name="contentBrand" required></label>
+          <label>Site description<textarea [(ngModel)]="content.site.description" name="contentDescription" required></textarea></label>
+          <label>Contact email<input [(ngModel)]="content.contact.email" name="contentEmail" type="email" required></label>
+          <label>Contact heading<input [(ngModel)]="content.contact.heading" name="contentHeading" required></label>
+          <h4>Home hero</h4>
+          <label>Eyebrow<input [(ngModel)]="content.hero.eyebrow" name="contentHeroEyebrow" required></label>
+          <label>Headline<input [(ngModel)]="content.hero.headline" name="contentHeroHeadline" required></label>
+          <label>Intro<textarea [(ngModel)]="content.hero.intro" name="contentHeroIntro" required></textarea></label>
+          <h4>Navigation</h4>
+          <label *ngFor="let item of ['catalog', 'services', 'booking', 'about']">
+            <input type="checkbox" [(ngModel)]="content.navigation[item].visible" [name]="'visible-' + item">
+            Show {{ content.navigation[item].label }}
+          </label>
+          <button class="publish" type="submit" [disabled]="contentSaving">{{ contentSaving ? 'Saving…' : 'Save site content' }} <span>→</span></button>
+          <p class="error" *ngIf="adminError">{{ adminError }}</p>
+        </form>
+      </section>
 
       <section class="admin-products" *ngIf="adminView === 'products'">
         <label class="dropzone">
@@ -292,4 +314,4 @@
   </aside>
 </div>
 
-<footer><a class="brand"><span>DE</span>MORI <i>STUDIO</i></a><p>© 2026 Demori Studio. All rights reserved.</p><div><a (click)="openAdmin()">Admin</a><a href="#">Instagram</a><a href="#">Vimeo</a></div></footer>
+<footer><a class="brand">{{ content.site.brand }}</a><p>© 2026 {{ content.site.brand }}. {{ content.site.footerText }}</p><div><a (click)="openAdmin()">Admin</a><a *ngFor="let link of content.site.socialLinks" [href]="link.url" target="_blank" rel="noreferrer">{{ link.label }}</a></div></footer>

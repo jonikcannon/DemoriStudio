@@ -39,6 +39,7 @@ const inquiriesLogFile = path.join(inquiriesDir, 'contact-inquiries.jsonl');
 const orderStore = require('./orders');
 const fulfilment = require('./fulfilment');
 const bookingStore = require('./booking');
+const siteContent = require('./content');
 orderStore.ensureStore();
 bookingStore.ensureStore();
 
@@ -787,6 +788,12 @@ app.get('/api/products', (req, res) => {
   res.json(products.filter(product => product.published).map(resolveProductImageForResponse));
 });
 
+app.get('/api/content', (req, res) => {
+  const content = siteContent.readContent();
+  const { revision, updatedAt, ...publicContent } = content;
+  res.json(publicContent);
+});
+
 app.post('/api/admin/login', rateLimit({ windowMs: 900000, max: 8, message: { error: 'Too many attempts. Try again later.' } }), async (req, res) => {
   const { email, password } = req.body || {};
   if (
@@ -837,6 +844,21 @@ app.post('/api/admin/google-login', rateLimit({ windowMs: 900000, max: 15, messa
   } catch (error) {
     console.error('Google auth error:', error);
     return res.status(401).json({ error: 'Invalid Google token.' });
+  }
+});
+
+app.get('/api/admin/content', auth, (req, res) => {
+  res.json(siteContent.readContent());
+});
+
+app.patch('/api/admin/content', auth, (req, res) => {
+  try {
+    const current = siteContent.readContent();
+    const next = siteContent.mergeContent(current, req.body || {});
+    const saved = siteContent.writeContent(next);
+    return res.json({ content: saved });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Content is invalid.' });
   }
 });
 

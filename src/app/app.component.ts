@@ -9,6 +9,7 @@ import { Product, ProductEditPayload, ProductOrderPayload, ProductsComponent } f
 import { BookingComponent, BookingRequest, BookingSlot } from './booking/booking.component';
 import { CartComponent, CartItem } from './cart/cart.component';
 import { getApiBaseUrl, mediaUrl } from './media-url';
+import { defaultSiteContent, SiteContent } from './site-content';
 
 type Work = { id?: string; image: string; title: string; type: string; size?: string; price?: number; mediaType?: 'image' | 'video' };
 // `description` is written by hand in storage/media/descriptions.json and
@@ -34,6 +35,7 @@ type Inquiry = {
   styleUrl: './app.component.css'
 })
 export class AppComponent implements OnInit {
+  content: SiteContent = defaultSiteContent;
   private readonly categoryOrder = ['Nature', 'Others', 'Beach', 'Hikes', 'Aerial'];
   menuOpen = false;
   showAll = false;
@@ -59,7 +61,7 @@ export class AppComponent implements OnInit {
   readonly heroPoster = 'assets/hero-poster.jpg';
   activeSection: 'home' | 'products' | 'gallery' | 'services' | 'about' | 'contact' | 'booking' = 'home';
   adminOpen = false;
-  adminView: 'products' | 'inquiries' | 'bookings' = 'products';
+  adminView: 'content' | 'products' | 'inquiries' | 'bookings' = 'content';
   private changeDetector: ChangeDetectorRef;
   private ngZone: NgZone;
   constructor(changeDetector: ChangeDetectorRef, ngZone: NgZone) {
@@ -74,6 +76,7 @@ export class AppComponent implements OnInit {
   adminToken = sessionStorage.getItem('demori_admin_token') || '';
   adminAuthProvider = sessionStorage.getItem('demori_admin_provider') || '';
   adminError = '';
+  contentSaving = false;
   inquiries: Inquiry[] = [];
   inquiriesLoading = false;
   inquiriesError = '';
@@ -315,7 +318,7 @@ export class AppComponent implements OnInit {
     });
     return this.visibleProductsCache;
   }
-  get canManageProducts() { return !!this.adminToken && this.adminAuthProvider === 'google'; }
+  get canManageProducts() { return !!this.adminToken; }
   get cartCount() { return this.cart.reduce((total, item) => total + item.quantity, 0); }
   get activeCartItems() { return this.cart.filter(item => item.quantity > 0); }
   get activeCartCount() { return this.activeCartItems.reduce((total, item) => total + item.quantity, 0); }
@@ -335,9 +338,21 @@ export class AppComponent implements OnInit {
     this.loadStoredProductEdits();
     this.loadStoredHiddenProductImages();
     this.loadStoredDeliveryPreferences();
+    void this.loadContent();
     void this.loadGallery();
     void this.loadProducts();
     this.initGoogleSignIn();
+  }
+  private async loadContent() {
+    try {
+      const response = await fetch(`${this.api}/content`);
+      if (!response.ok) return;
+      const incoming = await response.json();
+      this.content = { ...defaultSiteContent, ...incoming };
+      this.changeDetector.detectChanges();
+    } catch {
+      // The tracked defaults keep the public shell usable while the API is unavailable.
+    }
   }
   private loadStoredDeliveryPreferences() {
     try {
@@ -757,17 +772,59 @@ export class AppComponent implements OnInit {
     this.adminOpen = true;
     setTimeout(() => { this.renderGoogleSignInButton('google-signin-button'); }, 100);
     if (this.adminToken) {
+      void this.loadAdminContent();
       void this.loadInquiries();
     }
   }
-  setAdminView(view: 'products' | 'inquiries' | 'bookings') {
+  setAdminView(view: 'content' | 'products' | 'inquiries' | 'bookings') {
     this.adminView = view;
+    if (view === 'content' && this.adminToken) void this.loadAdminContent();
     if (view === 'inquiries' && this.adminToken && !this.inquiries.length) {
       void this.loadInquiries();
     }
     if (view === 'bookings' && this.adminToken) {
       void this.loadAdminBookings();
     }
+  }
+
+  private adminHeaders() {
+    return { Authorization: `Bearer ${this.adminToken}` };
+  }
+
+  private async loadAdminContent() {
+    this.adminError = '';
+    try {
+      const response = await fetch(`${this.api}/admin/content`, { headers: this.adminHeaders() });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.error || 'Could not load site content.');
+      this.content = body.content || body;
+    } catch (error) {
+      this.adminError = error instanceof Error ? error.message : 'Could not load site content.';
+    }
+  }
+
+  async saveSiteContent() {
+    if (!this.adminToken || this.contentSaving) return;
+    this.contentSaving = true;
+    this.adminError = '';
+    try {
+      const response = await fetch(`${this.api}/admin/content`, {
+        method: 'PATCH',
+        headers: { ...this.adminHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          site: this.content.site,
+          navigation: this.content.navigation,
+          hero: this.content.hero,
+          contact: this.content.contact
+        })
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.error || 'Could not save site content.');
+      this.content = body.content;
+    } catch (error) {
+      this.adminError = error instanceof Error ? error.message : 'Could not save site content.';
+    }
+    this.contentSaving = false;
   }
 
   openBooking() {
