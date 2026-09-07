@@ -9,7 +9,7 @@ import { Product, ProductEditPayload, ProductOrderPayload, ProductsComponent } f
 import { BookingComponent, BookingRequest, BookingSlot } from './booking/booking.component';
 import { CartComponent, CartItem } from './cart/cart.component';
 import { getApiBaseUrl, mediaUrl } from './media-url';
-import { defaultSiteContent, SiteContent } from './site-content';
+import { defaultSiteContent, NavKey, SiteContent, SiteSection } from './site-content';
 
 type Work = { id?: string; image: string; title: string; type: string; size?: string; price?: number; mediaType?: 'image' | 'video' };
 // `description` is written by hand in storage/media/descriptions.json and
@@ -59,7 +59,8 @@ export class AppComponent implements OnInit {
   // image under assets/gallery/ regardless of folder, and a watermarked poster
   // flashing before an unwatermarked video looks like a bug.
   readonly heroPoster = 'assets/hero-poster.jpg';
-  activeSection: 'home' | 'products' | 'gallery' | 'services' | 'about' | 'contact' | 'booking' = 'home';
+  activeSection: SiteSection = 'home';
+  readonly navKeys: NavKey[] = ['catalog', 'services', 'booking', 'about'];
   adminOpen = false;
   adminView: 'content' | 'products' | 'inquiries' | 'bookings' = 'content';
   private changeDetector: ChangeDetectorRef;

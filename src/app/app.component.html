@@ -152,7 +152,7 @@
           <label>Headline<input [(ngModel)]="content.hero.headline" name="contentHeroHeadline" required></label>
           <label>Intro<textarea [(ngModel)]="content.hero.intro" name="contentHeroIntro" required></textarea></label>
           <h4>Navigation</h4>
-          <label *ngFor="let item of ['catalog', 'services', 'booking', 'about']">
+          <label *ngFor="let item of navKeys">
             <input type="checkbox" [(ngModel)]="content.navigation[item].visible" [name]="'visible-' + item">
             Show {{ content.navigation[item].label }}
           </label>

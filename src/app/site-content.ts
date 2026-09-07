@@ -1,3 +1,7 @@
+export type SiteSection = 'home' | 'products' | 'gallery' | 'services' | 'about' | 'contact' | 'booking';
+
+export type NavKey = 'catalog' | 'services' | 'booking' | 'about';
+
 export type SiteContent = {
   site: {
     brand: string;
@@ -7,13 +11,13 @@ export type SiteContent = {
     footerText: string;
     socialLinks: { label: string; url: string }[];
   };
-  navigation: Record<'catalog' | 'services' | 'booking' | 'about', { label: string; visible: boolean }>;
+  navigation: Record<NavKey, { label: string; visible: boolean }>;
   hero: {
     eyebrow: string;
     headline: string;
     intro: string;
     ctaLabel: string;
-    ctaTarget: string;
+    ctaTarget: SiteSection;
     video: string;
     poster: string;
   };
