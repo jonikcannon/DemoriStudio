@@ -17,20 +17,15 @@
 
   <p class="error" *ngIf="error">{{ error }}</p>
 
-  <div class="booking-empty" *ngIf="!loading && !slots.length">
-    <p>No sessions are open at the moment.</p>
-    <button type="button" class="underlined" (click)="enquire.emit()">Ask about availability</button>
-  </div>
-
   <!-- Calendar + date picker -->
-  <div class="booking-picker" *ngIf="!loading && slots.length && !selectedSlot">
+  <div class="booking-picker" *ngIf="!loading && !selectedSlot">
     <div class="booking-controls">
       <label class="booking-date-input">
         Choose a date
         <input type="date" [ngModel]="selectedDateInput" (ngModelChange)="selectDateInput($event)" [min]="todayDateValue">
       </label>
 
-      <label class="booking-service-select">
+      <label class="booking-service-select" *ngIf="serviceOptions.length">
         Service
         <select [ngModel]="serviceFilter" (ngModelChange)="onServiceFilterChange($event)">
           <option value="all">All services</option>
@@ -38,6 +33,11 @@
         </select>
       </label>
     </div>
+
+    <p class="booking-empty" *ngIf="!slots.length">
+      No sessions are open at the moment.
+      <button type="button" class="underlined" (click)="enquire.emit()">Ask about availability</button>
+    </p>
 
     <!-- Picking a date can fail (no sessions that day for the chosen service).
          The form below is not on screen yet, so its error line cannot report it. -->
@@ -96,7 +96,7 @@
       </div>
     </div>
 
-    <div class="booking-groups" *ngIf="!selectedDateInput">
+    <div class="booking-groups" *ngIf="!selectedDateInput && dayGroups.length">
       <div class="booking-group">
         <h3>Open days</h3>
         <div class="booking-grid">
