@@ -1381,11 +1381,23 @@ app.get('/api/admin/bookings', auth, (req, res) => {
 
 app.get('/api/admin/booking/slots', auth, (req, res) => {
   bookingStore.releaseExpiredHolds();
+  const blocks = bookingStore.readBlocks();
+  const unblocks = bookingStore.readUnblocks();
   res.json({
-    slots: bookingStore.readSlots().sort((left, right) => (
-      String(left.date).localeCompare(String(right.date))
-      || String(left.startTime || '').localeCompare(String(right.startTime || ''))
-    ))
+    slots: bookingStore.readSlots()
+      .map(slot => ({
+        ...slot,
+        // Surface whether a block rule currently hides this session, so the
+        // admin can unblock it directly. booked/held slots are never 'blocked'
+        // in the booking sense -- that flag is only meaningful for open ones.
+        blocked: slot.status === bookingStore.SLOT.OPEN
+          ? bookingStore.slotIsBlocked(slot, blocks, unblocks)
+          : false
+      }))
+      .sort((left, right) => (
+        String(left.date).localeCompare(String(right.date))
+        || String(left.startTime || '').localeCompare(String(right.startTime || ''))
+      ))
   });
 });
 
@@ -1438,6 +1450,36 @@ app.post('/api/admin/booking/blocks', auth, (req, res) => {
     .filter(slot => slot.status === bookingStore.SLOT.OPEN)
     .filter(slot => bookingStore.slotIsBlocked(slot, [created.block])).length;
   res.status(201).json({ block: created.block, hiddenSessions: hidden });
+});
+
+// One-off exceptions to the recurring blocks above: free a whole day or a
+// single session so it can be published and booked. The unblock list is served
+// with a count of sessions each rule currently frees, mirroring the block list.
+app.get('/api/admin/booking/unblocks', auth, (req, res) => {
+  const unblocks = bookingStore.readUnblocks();
+  const blocks = bookingStore.readBlocks();
+  res.json({
+    unblocks: unblocks.map(rule => ({
+      ...rule,
+      label: bookingStore.unblockLabel(rule)
+    }))
+  });
+});
+
+app.post('/api/admin/booking/unblocks', auth, (req, res) => {
+  const created = bookingStore.createUnblock({
+    date: req.body?.date,
+    startTime: req.body?.startTime,
+    reason: req.body?.reason
+  });
+  if (created.error) return res.status(created.status || 400).json({ error: created.error });
+  res.status(201).json({ unblock: created.unblock });
+});
+
+app.delete('/api/admin/booking/unblocks/:id', auth, (req, res) => {
+  const removed = bookingStore.deleteUnblock(String(req.params.id || ''));
+  if (removed.error) return res.status(removed.status || 400).json({ error: removed.error });
+  res.json({ ok: true });
 });
 
 app.delete('/api/admin/booking/blocks/:id', auth, (req, res) => {

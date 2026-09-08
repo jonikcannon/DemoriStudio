@@ -33,6 +33,7 @@ const bookingDir = path.join(__dirname, '../storage/bookings');
 const slotsFile = path.join(bookingDir, 'slots.jsonl');
 const bookingsFile = path.join(bookingDir, 'bookings.jsonl');
 const blocksFile = path.join(bookingDir, 'blocks.jsonl');
+const unblocksFile = path.join(bookingDir, 'unblocks.jsonl');
 
 const SLOT = Object.freeze({ OPEN: 'open', HELD: 'held', BOOKED: 'booked', BLOCKED: 'blocked' });
 const BOOKING = Object.freeze({ PENDING: 'pending', CONFIRMED: 'confirmed', CANCELLED: 'cancelled', EXPIRED: 'expired' });
@@ -175,9 +176,11 @@ function writeFile(file, rows) {
 const readSlots = () => readFile(slotsFile);
 const readBookings = () => readFile(bookingsFile);
 const readBlocks = () => readFile(blocksFile);
+const readUnblocks = () => readFile(unblocksFile);
 const writeSlots = rows => writeFile(slotsFile, rows);
 const writeBookings = rows => writeFile(bookingsFile, rows);
 const writeBlocks = rows => writeFile(blocksFile, rows);
+const writeUnblocks = rows => writeFile(unblocksFile, rows);
 
 function appendFileRow(file, row) {
   ensureStore();
@@ -263,11 +266,68 @@ function deleteBlock(blockId) {
   return { ok: true };
 }
 
+// ---------------------------------------------------------------------------
+// Per-date/time unblocks. A block is a recurring weekday rule ("every Mon-Fri
+// 09:00-17:00"). An unblock is the studio carving a one-off exception back out
+// of that rule -- "but this Friday the 14th, the 18:00 session can run". It is
+// stored as a date + optional startTime so a whole day or a single session can
+// be freed. Unblocks override blocks in exactly the two places blocks apply:
+// publishDay (so a freed session is actually written) and listOpenSlots (so a
+// freed already-published session becomes bookable again). They never resurrect
+// a session someone cancelled or a date that has passed -- those guards run
+// independently of blocking.
+
+// True when an unblock rule covers this date + start time. A rule with an empty
+// startTime frees the whole day; one with a startTime frees only that session.
+function isUnblocked(date, startTime, unblocks = readUnblocks()) {
+  const day = String(date || '').trim();
+  const start = String(startTime || '').trim();
+  return unblocks.some(rule => (
+    String(rule?.date || '') === day
+    && (!rule.startTime || String(rule.startTime) === start)
+  ));
+}
+
+function unblockLabel(rule) {
+  return rule.startTime ? `${rule.date} at ${rule.startTime}` : `${rule.date} (all day)`;
+}
+
+function createUnblock({ date, startTime = '', reason = '' }) {
+  const day = String(date || '').trim();
+  if (!DATE_PATTERN.test(day) || Number.isNaN(Date.parse(`${day}T00:00:00`))) {
+    return { error: 'Date must be a calendar date in YYYY-MM-DD form.' };
+  }
+  if (isPastDate(day)) return { error: 'That date is in the past.' };
+  const start = String(startTime || '').trim();
+  if (start && !TIME_PATTERN.test(start)) return { error: 'Start must be a 24-hour time in HH:MM form, or empty for the whole day.' };
+  if (isUnblocked(day, start)) return { error: 'That day or session is already unblocked.', status: 409 };
+
+  const now = new Date().toISOString();
+  return {
+    unblock: appendFileRow(unblocksFile, {
+      id: randomUUID(),
+      date: day,
+      startTime: start,
+      reason: String(reason || '').trim().slice(0, 120),
+      createdAt: now
+    })
+  };
+}
+
+function deleteUnblock(unblockId) {
+  const unblocks = readUnblocks();
+  if (!unblocks.some(rule => rule.id === unblockId)) return { error: 'Unblock not found.', status: 404 };
+  writeUnblocks(unblocks.filter(rule => rule.id !== unblockId));
+  return { ok: true };
+}
+
 // True when a session on `date` running [startTime, endTime) touches any blocked
 // window. Half-open on both sides, so a session ending exactly at 09:00 does not
-// collide with a block starting at 09:00.
-function isBlocked(date, startTime, endTime, blocks = readBlocks()) {
+// collide with a block starting at 09:00. An unblock rule for that date/session
+// lifts the block.
+function isBlocked(date, startTime, endTime, blocks = readBlocks(), unblocks = readUnblocks()) {
   if (!TIME_PATTERN.test(String(startTime || ''))) return false;
+  if (isUnblocked(date, startTime, unblocks)) return false;
   const weekday = weekdayOf(date);
   const from = toMinutes(startTime);
   const to = TIME_PATTERN.test(String(endTime || '')) ? toMinutes(endTime) : from;
@@ -279,12 +339,13 @@ function isBlocked(date, startTime, endTime, blocks = readBlocks()) {
   ));
 }
 
-function slotIsBlocked(slot, blocks) {
+function slotIsBlocked(slot, blocks, unblocks) {
   return isBlocked(
     slot.date,
     slot.startTime,
     slot.endTime || endTimeFor(slot.startTime, slot.approxDurationMinutes),
-    blocks
+    blocks,
+    unblocks
   );
 }
 
@@ -310,10 +371,11 @@ function listOpenSlots({ from = '', to = '', service = '' } = {}) {
   const { slots } = releaseExpiredHolds();
   const wantedService = String(service || '').trim().toLowerCase();
   const blocks = readBlocks();
+  const unblocks = readUnblocks();
   return slots
     .filter(slot => slot.status === SLOT.OPEN)
     .filter(slot => !isPastSlot(slot))
-    .filter(slot => !slotIsBlocked(slot, blocks))
+    .filter(slot => !slotIsBlocked(slot, blocks, unblocks))
     .filter(slot => (!from || slot.date >= from) && (!to || slot.date <= to))
     .filter(slot => !wantedService || String(slot.service || '').toLowerCase() === wantedService)
     .sort((left, right) => (
@@ -380,6 +442,7 @@ function publishDay({
   );
 
   const blocks = readBlocks();
+  const unblocks = readUnblocks();
   const now = new Date().toISOString();
   const created = [];
   let skipped = 0;
@@ -389,7 +452,7 @@ function publishDay({
     // A start time earlier today is already gone; publishing it would create a
     // row that listOpenSlots immediately filters back out.
     if (isPastSlot({ date: day, startTime })) { skipped += 1; continue; }
-    if (isBlocked(day, startTime, endTimeFor(startTime, session), blocks)) { blocked += 1; continue; }
+    if (isBlocked(day, startTime, endTimeFor(startTime, session), blocks, unblocks)) { blocked += 1; continue; }
     created.push(appendSlot({
       id: randomUUID(),
       service: serviceName,
@@ -559,6 +622,7 @@ module.exports = {
   slotsFile,
   bookingsFile,
   blocksFile,
+  unblocksFile,
   WEEKDAY_NAMES,
   ensureStore,
   depositFor,
@@ -576,8 +640,13 @@ module.exports = {
   readSlots,
   readBookings,
   readBlocks,
+  readUnblocks,
   createBlock,
   deleteBlock,
+  createUnblock,
+  deleteUnblock,
+  unblockLabel,
+  isUnblocked,
   isBlocked,
   slotIsBlocked,
   blockLabel,

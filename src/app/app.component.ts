@@ -272,6 +272,10 @@ export class AppComponent implements OnInit {
   };
   adminBookingNotice = '';
   adminBlocks: any[] = [];
+  adminUnblocks: any[] = [];
+  // A one-off exception to a recurring block: free a whole day (empty time) or a
+  // single session so it can be published and booked.
+  newUnblock = { date: '', startTime: '', reason: '' };
   // Mon-Fri is the case this exists for: a day job that rules out weekday hours.
   newBlock = { weekdays: [1, 2, 3, 4, 5], startTime: '09:00', endTime: '17:00', reason: '' };
   readonly weekdayOptions = [
@@ -886,15 +890,17 @@ export class AppComponent implements OnInit {
     this.adminBookingError = '';
     try {
       const headers = { Authorization: `Bearer ${this.adminToken}` };
-      const [bookingsRes, slotsRes, blocksRes] = await Promise.all([
+      const [bookingsRes, slotsRes, blocksRes, unblocksRes] = await Promise.all([
         fetch(`${this.api}/admin/bookings`, { headers }),
         fetch(`${this.api}/admin/booking/slots`, { headers }),
-        fetch(`${this.api}/admin/booking/blocks`, { headers })
+        fetch(`${this.api}/admin/booking/blocks`, { headers }),
+        fetch(`${this.api}/admin/booking/unblocks`, { headers })
       ]);
-      if (!bookingsRes.ok || !slotsRes.ok || !blocksRes.ok) throw new Error('Booking data unavailable');
+      if (!bookingsRes.ok || !slotsRes.ok || !blocksRes.ok || !unblocksRes.ok) throw new Error('Booking data unavailable');
       this.adminBookings = (await bookingsRes.json())?.bookings || [];
       this.adminSlots = (await slotsRes.json())?.slots || [];
       this.adminBlocks = (await blocksRes.json())?.blocks || [];
+      this.adminUnblocks = (await unblocksRes.json())?.unblocks || [];
     } catch (error) {
       console.error('Admin booking data could not be loaded.', error);
       this.adminBookingError = 'Could not load bookings.';
@@ -980,6 +986,69 @@ export class AppComponent implements OnInit {
       this.adminBookingError = String((await response.json())?.error || 'Could not remove that block.');
       return;
     }
+    await this.loadAdminBookings();
+    this.bookingSlots = [];
+  }
+
+  async createUnblock() {
+    this.adminBookingError = '';
+    this.adminBookingNotice = '';
+    if (!this.newUnblock.date) {
+      this.adminBookingError = 'Pick a date to unblock.';
+      return;
+    }
+    const response = await fetch(`${this.api}/admin/booking/unblocks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.adminToken}` },
+      body: JSON.stringify({
+        date: this.newUnblock.date,
+        startTime: this.newUnblock.startTime,
+        reason: this.newUnblock.reason
+      })
+    });
+    const body = await response.json();
+    if (!response.ok) {
+      this.adminBookingError = String(body?.error || 'Could not unblock that day or session.');
+      return;
+    }
+    this.adminBookingNotice = this.newUnblock.startTime
+      ? `Unblocked ${this.newUnblock.date} at ${this.newUnblock.startTime}. Re-publish the day if those sessions were never created.`
+      : `Unblocked ${this.newUnblock.date}. Re-publish the day if its sessions were never created.`;
+    this.newUnblock = { date: '', startTime: '', reason: '' };
+    await this.loadAdminBookings();
+    this.bookingSlots = [];
+  }
+
+  async removeUnblock(rule: any) {
+    if (!await this.requestConfirmation(`Re-block ${rule.label}?`, 'Remove exception')) return;
+    const response = await fetch(`${this.api}/admin/booking/unblocks/${encodeURIComponent(rule.id)}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${this.adminToken}` }
+    });
+    if (!response.ok) {
+      this.adminBookingError = String((await response.json())?.error || 'Could not remove that exception.');
+      return;
+    }
+    await this.loadAdminBookings();
+    this.bookingSlots = [];
+  }
+
+  // A blocked open session can be freed in place with a one-click unblock rule
+  // matching its exact date + start time. Freeing a session that was never
+  // created (because publishDay skipped it) needs the day re-published instead.
+  async unblockSlot(slot: any) {
+    this.adminBookingError = '';
+    const response = await fetch(`${this.api}/admin/booking/unblocks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.adminToken}` },
+      body: JSON.stringify({ date: slot.date, startTime: slot.startTime || '', reason: 'Unblocked from the sessions list' })
+    });
+    const body = await response.json();
+    if (!response.ok) {
+      this.adminBookingError = String(body?.error || 'Could not unblock that session.');
+      return;
+    }
+    this.adminBookingNotice = `Unblocked ${slot.date}${slot.startTime ? ` at ${slot.startTime}` : ''}.`;
     await this.loadAdminBookings();
     this.bookingSlots = [];
   }

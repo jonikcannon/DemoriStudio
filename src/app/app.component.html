@@ -255,12 +255,34 @@
           </ul>
         </div>
 
+        <p class="admin-inquiries-meta" *ngIf="!adminBookingLoading">Unblocked exceptions ({{ adminUnblocks.length }})</p>
+        <div class="admin-blocks" *ngIf="!adminBookingLoading">
+          <div class="admin-block-form admin-unblock-form">
+            <label>Date<input type="date" [(ngModel)]="newUnblock.date" name="unblockDate"></label>
+            <label>Start time (optional)<input type="time" [(ngModel)]="newUnblock.startTime" name="unblockStart"></label>
+            <label>Reason<input type="text" [(ngModel)]="newUnblock.reason" name="unblockReason" placeholder="One-off opening"></label>
+            <button type="button" class="underlined" (click)="createUnblock()">Unblock +</button>
+          </div>
+          <p class="admin-block-hint">
+            Unblocks carve one-off exceptions out of the blocked hours above. Leave the start time
+            empty to free a whole day; set it to free just that session. Re-publish the day if its
+            sessions were never created.
+          </p>
+          <ul class="admin-block-list" *ngIf="adminUnblocks.length">
+            <li *ngFor="let rule of adminUnblocks">
+              <span class="admin-block-label">{{ rule.label }}</span>
+              <span class="admin-block-reason" *ngIf="rule.reason">{{ rule.reason }}</span>
+              <button type="button" class="underlined" (click)="removeUnblock(rule)">Re-block</button>
+            </li>
+          </ul>
+        </div>
+
         <p class="admin-inquiries-meta" *ngIf="!adminBookingLoading">Published sessions ({{ adminSlots.length }})</p>
         <div class="admin-inquiries-list" *ngIf="!adminBookingLoading && adminSlots.length">
           <article class="inquiry-card" *ngFor="let slot of adminSlots">
             <div class="inquiry-card-head">
               <h4>{{ slot.date }}<span *ngIf="slot.startTime"> at {{ slot.startTime }}</span> &middot; {{ slot.service }}</h4>
-              <p>{{ slot.status }}</p>
+              <p>{{ slot.status }}<span *ngIf="slot.blocked"> &middot; blocked</span></p>
             </div>
             <p class="inquiry-card-contact">
               {{ formatMoney(slot.sessionFee) }} session &middot; {{ formatMoney(slot.sessionFee / 4) }} deposit
@@ -268,6 +290,7 @@
               <span *ngIf="slot.location"> &middot; {{ slot.location }}</span>
             </p>
             <div class="inquiry-card-foot">
+              <button type="button" class="underlined" (click)="unblockSlot(slot)" *ngIf="slot.blocked && slot.status === 'open'">Unblock</button>
               <button type="button" class="underlined" (click)="removeSlot(slot)" *ngIf="slot.status !== 'booked'">Remove session</button>
               <span class="inquiry-delivery" *ngIf="slot.status === 'booked'">Booked</span>
             </div>
