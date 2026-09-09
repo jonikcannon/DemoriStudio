@@ -30,6 +30,9 @@
 .calendar-day:hover:not(:disabled){border-color:#26362e;transform:translateY(-1px)}
 .calendar-day.outside-month{opacity:.38}
 .calendar-day.available{background:#edf4ef;border-color:#a8bdb0}
+/* Nothing published yet, but still clickable to send a request -- a dashed
+   border keeps it visually distinct from an actually-bookable day. */
+.calendar-day.requestable{background:#faf9f7;border-style:dashed;border-color:#b7b9ae;color:#3d4a42}
 .calendar-day.selected{background:#26362e;color:#fff;border-color:#26362e}
 .calendar-day:disabled{cursor:not-allowed}
 

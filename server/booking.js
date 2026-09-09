@@ -52,6 +52,10 @@ const DEFAULT_GAP_MINUTES = 30;
 // a 1-minute session turning one publish into thousands of rows.
 const MAX_STARTS_PER_DAY = 48;
 
+// Caps a single publishRange call (the admin panel's week/month options) so a
+// typo'd end date cannot silently expand a publish into years of rows.
+const MAX_PUBLISH_RANGE_DAYS = 62;
+
 // Recurring unavailability: "Mon-Fri 09:00-17:00" for a day job, say. A block is
 // a weekly rule rather than a row per date, so it keeps applying to months that
 // have not been published yet.
@@ -66,6 +70,23 @@ const WEEKDAY_NAMES = Object.freeze(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', '
 // Deposit is a share of the session fee, so it scales with the job instead of
 // under-securing an expensive shoot.
 const DEPOSIT_RATE = 0.25;
+
+// Session fees normally come from the slot the studio published (see the note
+// at the top of this file). A visitor requesting a date with nothing
+// published yet has no slot to read a fee from, so this is the one place a
+// price is looked up by service name instead. Kept in sync BY HAND with the
+// `services` array in src/app/app.component.ts, whose tier prices are display
+// strings ("$175 - $250") with no machine-readable number -- this is each
+// service's cheapest listed tier, in cents.
+const SERVICE_STARTING_PRICES = Object.freeze({
+  spaces: 15000,
+  aerial: 25000,
+  portraits: 17500
+});
+
+function startingPriceFor(service) {
+  return SERVICE_STARTING_PRICES[String(service || '').trim().toLowerCase()] || 0;
+}
 
 function depositFor(sessionFee) {
   const fee = Math.max(0, Math.round(Number(sessionFee) || 0));
@@ -218,9 +239,23 @@ function releaseExpiredHolds(now = Date.now()) {
   return { slots: nextSlots, released: expired.length };
 }
 
-function weekdayOf(date) {
+// Local-time parse, deliberately not UTC: a date key is a calendar day, not an
+// instant, so parsing it as UTC could shift it across midnight and land on the
+// wrong weekday depending on the server's offset.
+function parseDateKey(date) {
   const [year, month, day] = String(date || '').split('-').map(Number);
-  return new Date(year, (month || 1) - 1, day || 1).getDay();
+  return new Date(year, (month || 1) - 1, day || 1);
+}
+
+function formatDateKey(d) {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function weekdayOf(date) {
+  return parseDateKey(date).getDay();
 }
 
 function blockLabel(block) {
@@ -302,6 +337,21 @@ function createUnblock({ date, startTime = '', reason = '' }) {
   if (start && !TIME_PATTERN.test(start)) return { error: 'Start must be a 24-hour time in HH:MM form, or empty for the whole day.' };
   if (isUnblocked(day, start)) return { error: 'That day or session is already unblocked.', status: 409 };
 
+  // Days are bookable by default: an exception only means something when a
+  // block actually covers the day (or the requested session). A rule with
+  // nothing to override is dead weight in the list, so reject it and say why.
+  const covered = start
+    ? isBlocked(day, start, endTimeFor(start, 1), readBlocks(), [])
+    : readBlocks().some(block => Array.isArray(block.weekdays) && block.weekdays.includes(weekdayOf(day)));
+  if (!covered) {
+    return {
+      error: start
+        ? 'That session is not blocked, so there is nothing to unblock.'
+        : 'That day is not blocked. Days are open by default -- publish it normally.',
+      status: 409
+    };
+  }
+
   const now = new Date().toISOString();
   return {
     unblock: appendFileRow(unblocksFile, {
@@ -311,6 +361,57 @@ function createUnblock({ date, startTime = '', reason = '' }) {
       reason: String(reason || '').trim().slice(0, 120),
       createdAt: now
     })
+  };
+}
+
+// Unblocks every day in [startDate, endDate] that a block actually covers --
+// days already open by default, or already unblocked, are skipped rather than
+// erroring, so a range can be unblocked without knowing in advance which of
+// its days are affected. Whole-day only (no per-session startTime): the range
+// case is "open up this blocked stretch", not carving out one recurring time
+// across many days.
+function unblockRange({ startDate, endDate, reason = '' }) {
+  const start = String(startDate || '').trim();
+  const end = String(endDate || '').trim();
+  if (!DATE_PATTERN.test(start) || Number.isNaN(Date.parse(`${start}T00:00:00`))) {
+    return { error: 'Start date must be a calendar date in YYYY-MM-DD form.' };
+  }
+  if (!DATE_PATTERN.test(end) || Number.isNaN(Date.parse(`${end}T00:00:00`))) {
+    return { error: 'End date must be a calendar date in YYYY-MM-DD form.' };
+  }
+  const startDay = parseDateKey(start);
+  const endDay = parseDateKey(end);
+  if (endDay < startDay) return { error: 'End date must be on or after the start date.' };
+
+  // Walked with setDate rather than a millisecond-difference divide -- see the
+  // matching note in publishRange for why.
+  const dayKeys = [];
+  for (const cursor = new Date(startDay); cursor <= endDay; cursor.setDate(cursor.getDate() + 1)) {
+    dayKeys.push(formatDateKey(cursor));
+    if (dayKeys.length > MAX_PUBLISH_RANGE_DAYS) {
+      return { error: `Pick a range of ${MAX_PUBLISH_RANGE_DAYS} days or fewer.` };
+    }
+  }
+
+  const blocks = readBlocks();
+  const created = [];
+  let daysPast = 0;
+  let daysNotBlocked = 0;
+  for (const day of dayKeys) {
+    if (isPastDate(day)) { daysPast += 1; continue; }
+    if (isUnblocked(day, '')) { daysNotBlocked += 1; continue; }
+    const covered = blocks.some(block => Array.isArray(block.weekdays) && block.weekdays.includes(weekdayOf(day)));
+    if (!covered) { daysNotBlocked += 1; continue; }
+    const result = createUnblock({ date: day, reason });
+    if (result.unblock) created.push(result.unblock);
+  }
+
+  return {
+    unblocks: created,
+    unblockedDays: created.length,
+    daysAttempted: dayKeys.length - daysPast,
+    daysSkippedPast: daysPast,
+    daysSkippedNotBlocked: daysNotBlocked
   };
 }
 
@@ -393,26 +494,13 @@ function findBooking(id) {
   return readBookings().find(booking => booking.id === String(id || '')) || null;
 }
 
-// Publishes one day's open hours and expands it into bookable start times.
-// Re-publishing the same day is safe and additive: start times that already
-// exist are skipped rather than duplicated, so widening a day's hours adds only
-// the new sessions and never disturbs one that is already held or booked.
-function publishDay({
-  service,
-  date,
-  openTime,
-  closeTime,
-  sessionFee,
-  sessionMinutes = DEFAULT_SESSION_MINUTES,
-  gapMinutes = DEFAULT_GAP_MINUTES,
-  location = ''
-}) {
-  if (!String(service || '').trim()) return { error: 'Service is required.' };
-  const day = String(date || '').trim();
-  if (!DATE_PATTERN.test(day) || Number.isNaN(Date.parse(`${day}T00:00:00`))) {
-    return { error: 'Date must be a calendar date in YYYY-MM-DD form.' };
-  }
-  if (isPastDate(day)) return { error: 'That date is in the past.' };
+// Validates the parts of a publish request that do not depend on which day
+// (or days) it applies to. Shared by publishDay and publishRange so a range
+// publish rejects bad hours/fees exactly like a single-day one, instead of
+// re-checking them once per day and drifting out of sync.
+function validatePublishParams({ service, openTime, closeTime, sessionFee, sessionMinutes = DEFAULT_SESSION_MINUTES, gapMinutes = DEFAULT_GAP_MINUTES }) {
+  const serviceName = String(service || '').trim();
+  if (!serviceName) return { error: 'Service is required.' };
 
   const open = String(openTime || '').trim();
   const close = String(closeTime || '').trim();
@@ -434,10 +522,26 @@ function publishDay({
   const starts = generateStartTimes({ openTime: open, closeTime: close, sessionMinutes: session, gapMinutes: gap });
   if (!starts.length) return { error: 'Those hours produce no bookable sessions.' };
 
-  const serviceName = String(service).trim();
+  return { service: serviceName, session, gap, fee, starts };
+}
+
+// Publishes one already-validated day's start times, optionally lifting a
+// covering block for that date first. The unit both publishDay and
+// publishRange loop over, so a multi-day publish behaves exactly like
+// repeating the single-day action once per date.
+function publishOneDay(day, { service, session, gap, fee, starts, location, unblockDay }) {
+  // "Unblock this day" frees a block-covered date in the same action as
+  // publishing it, instead of a publish that skips every session and has to be
+  // retried after adding the exception by hand. Days no block covers are open
+  // by default, so no rule is written for them (createUnblock rejects those).
+  let unblockedDay = false;
+  if (unblockDay && !isUnblocked(day, '')) {
+    unblockedDay = Boolean(createUnblock({ date: day, reason: 'Unblocked while publishing' }).unblock);
+  }
+
   const existing = new Set(
     readSlots()
-      .filter(slot => slot.date === day && String(slot.service || '').toLowerCase() === serviceName.toLowerCase())
+      .filter(slot => slot.date === day && String(slot.service || '').toLowerCase() === service.toLowerCase())
       .map(slot => String(slot.startTime || ''))
   );
 
@@ -455,7 +559,7 @@ function publishDay({
     if (isBlocked(day, startTime, endTimeFor(startTime, session), blocks, unblocks)) { blocked += 1; continue; }
     created.push(appendSlot({
       id: randomUUID(),
-      service: serviceName,
+      service,
       date: day,
       startTime,
       endTime: endTimeFor(startTime, session),
@@ -470,7 +574,34 @@ function publishDay({
       updatedAt: now
     }));
   }
+  return { created, skipped, blocked, unblockedDay };
+}
 
+// Publishes one day's open hours and expands it into bookable start times.
+// Re-publishing the same day is safe and additive: start times that already
+// exist are skipped rather than duplicated, so widening a day's hours adds only
+// the new sessions and never disturbs one that is already held or booked.
+function publishDay({
+  service,
+  date,
+  openTime,
+  closeTime,
+  sessionFee,
+  sessionMinutes = DEFAULT_SESSION_MINUTES,
+  gapMinutes = DEFAULT_GAP_MINUTES,
+  location = '',
+  unblockDay = false
+}) {
+  const day = String(date || '').trim();
+  if (!DATE_PATTERN.test(day) || Number.isNaN(Date.parse(`${day}T00:00:00`))) {
+    return { error: 'Date must be a calendar date in YYYY-MM-DD form.' };
+  }
+  if (isPastDate(day)) return { error: 'That date is in the past.' };
+
+  const params = validatePublishParams({ service, openTime, closeTime, sessionFee, sessionMinutes, gapMinutes });
+  if (params.error) return params;
+
+  const { created, skipped, blocked, unblockedDay } = publishOneDay(day, { ...params, location, unblockDay });
   if (!created.length) {
     return {
       error: blocked
@@ -478,7 +609,157 @@ function publishDay({
         : 'Every session in those hours is already published or has passed.'
     };
   }
-  return { slots: created, created: created.length, skipped, blocked };
+  return { slots: created, created: created.length, skipped, blocked, unblockedDay };
+}
+
+// Same as publishDay, but repeats the publish across every calendar day from
+// startDate to endDate inclusive -- the admin panel's "week" / "month" range
+// options are just this with the end date computed on the client. A day
+// within the range that has already passed is silently skipped rather than
+// failing the whole batch, so a month range starting a few days before today
+// still publishes the remaining days.
+function publishRange({
+  service,
+  startDate,
+  endDate,
+  openTime,
+  closeTime,
+  sessionFee,
+  sessionMinutes = DEFAULT_SESSION_MINUTES,
+  gapMinutes = DEFAULT_GAP_MINUTES,
+  location = '',
+  unblockDays = false
+}) {
+  const start = String(startDate || '').trim();
+  const end = String(endDate || '').trim();
+  if (!DATE_PATTERN.test(start) || Number.isNaN(Date.parse(`${start}T00:00:00`))) {
+    return { error: 'Start date must be a calendar date in YYYY-MM-DD form.' };
+  }
+  if (!DATE_PATTERN.test(end) || Number.isNaN(Date.parse(`${end}T00:00:00`))) {
+    return { error: 'End date must be a calendar date in YYYY-MM-DD form.' };
+  }
+  const startDay = parseDateKey(start);
+  const endDay = parseDateKey(end);
+  if (endDay < startDay) return { error: 'End date must be on or after the start date.' };
+
+  // Walked with setDate rather than a millisecond-difference divide: a DST
+  // transition inside the range makes some days 23 or 25 hours long, which
+  // throws off a fixed-86400000 day count by one.
+  const dayKeys = [];
+  for (const cursor = new Date(startDay); cursor <= endDay; cursor.setDate(cursor.getDate() + 1)) {
+    dayKeys.push(formatDateKey(cursor));
+    if (dayKeys.length > MAX_PUBLISH_RANGE_DAYS) {
+      return { error: `Pick a range of ${MAX_PUBLISH_RANGE_DAYS} days or fewer.` };
+    }
+  }
+
+  const params = validatePublishParams({ service, openTime, closeTime, sessionFee, sessionMinutes, gapMinutes });
+  if (params.error) return params;
+
+  const allCreated = [];
+  let skipped = 0;
+  let blocked = 0;
+  let unblockedDays = 0;
+  let daysPublished = 0;
+  let daysPast = 0;
+
+  for (const day of dayKeys) {
+    if (isPastDate(day)) { daysPast += 1; continue; }
+    const result = publishOneDay(day, { ...params, location, unblockDay: unblockDays });
+    if (result.created.length) daysPublished += 1;
+    if (result.unblockedDay) unblockedDays += 1;
+    skipped += result.skipped;
+    blocked += result.blocked;
+    allCreated.push(...result.created);
+  }
+
+  if (!allCreated.length) {
+    return {
+      error: blocked
+        ? `Every session across that range is blocked, already published or has passed (${blocked} blocked).`
+        : 'Every session across that range is already published or has passed.'
+    };
+  }
+  return {
+    slots: allCreated,
+    created: allCreated.length,
+    skipped,
+    blocked,
+    unblockedDay: unblockedDays > 0,
+    unblockedDays,
+    daysPublished,
+    daysAttempted: dayKeys.length - daysPast,
+    daysSkippedPast: daysPast
+  };
+}
+
+// Provisionally holds a date a visitor requested when nothing was published
+// for it: creates the slot row on demand -- priced from SERVICE_STARTING_PRICES
+// rather than a studio-set fee -- and hands the id to holdSlot so the rest of
+// the pipeline (hold, Stripe checkout, webhook confirm, expiry sweep) runs
+// completely unchanged. Still checked against the studio's block rules like
+// any other slot: a deposit cannot provisionally hold a date the studio has
+// already ruled out.
+//
+// Idempotent by (date, service, startTime): if a slot already exists there --
+// because the studio has since published that day, or an earlier request's
+// hold expired and returned it to OPEN -- that row is reused instead of
+// creating a duplicate, using its real published fee rather than the estimate.
+function createRequestedSlot({ service, date, startTime, location = '' }) {
+  const serviceName = String(service || '').trim();
+  if (!serviceName) return { error: 'Please choose a service.' };
+
+  const day = String(date || '').trim();
+  if (!DATE_PATTERN.test(day) || Number.isNaN(Date.parse(`${day}T00:00:00`))) {
+    return { error: 'Date must be a calendar date in YYYY-MM-DD form.' };
+  }
+  if (isPastDate(day)) return { error: 'That date is in the past.' };
+
+  const start = String(startTime || '').trim();
+  if (!TIME_PATTERN.test(start)) return { error: 'Please choose a start time, in 24-hour HH:MM form.' };
+  if (isPastSlot({ date: day, startTime: start })) return { error: 'That time has already passed.' };
+
+  const existing = readSlots().find(slot => (
+    slot.date === day
+    && String(slot.service || '').toLowerCase() === serviceName.toLowerCase()
+    && String(slot.startTime || '') === start
+  ));
+  if (existing) {
+    if (existing.status !== SLOT.OPEN) return { error: 'That time was just taken. Please pick another.', status: 409 };
+    return { slotId: existing.id };
+  }
+
+  const fee = startingPriceFor(serviceName);
+  if (!fee) return { error: 'That service is not available to request online yet. Please use the contact form instead.', status: 400 };
+
+  const session = DEFAULT_SESSION_MINUTES;
+  const end = endTimeFor(start, session);
+  if (isBlocked(day, start, end, readBlocks(), readUnblocks())) {
+    return { error: 'That date is not available. Please choose another, or ask about availability.', status: 409 };
+  }
+
+  const now = new Date().toISOString();
+  const slot = appendSlot({
+    id: randomUUID(),
+    service: serviceName,
+    date: day,
+    startTime: start,
+    endTime: end,
+    sessionFee: fee,
+    approxDurationMinutes: session,
+    gapMinutes: DEFAULT_GAP_MINUTES,
+    location: String(location || '').trim(),
+    status: SLOT.OPEN,
+    holdUntil: '',
+    bookingId: '',
+    // Distinguishes an on-demand slot priced from the estimate table above
+    // from one the studio actually published with its own fee -- shown as a
+    // badge in the admin sessions list.
+    requested: true,
+    createdAt: now,
+    updatedAt: now
+  });
+  return { slotId: slot.id };
 }
 
 // Read-modify-write with no await inside, so the open -> held transition cannot
@@ -644,6 +925,7 @@ module.exports = {
   createBlock,
   deleteBlock,
   createUnblock,
+  unblockRange,
   deleteUnblock,
   unblockLabel,
   isUnblocked,
@@ -654,6 +936,8 @@ module.exports = {
   findSlot,
   findBooking,
   publishDay,
+  publishRange,
+  createRequestedSlot,
   holdSlot,
   attachOrder,
   updateBooking,

@@ -88,7 +88,10 @@
     [error]="bookingError"
     [refundPolicy]="bookingPolicy"
     [holdMinutes]="bookingHoldMinutes"
+    [serviceCatalog]="bookableServiceNames"
+    [requestSubmitting]="bookingRequestSubmitting"
     (book)="onBookSlot($event)"
+    (requestDate)="onRequestDate($event)"
     (enquire)="activeSection = 'contact'"></app-booking>
 
   <app-about *ngIf="activeSection === 'about'" (contactClick)="activeSection = 'contact'"></app-about>
@@ -212,13 +215,17 @@
         <div class="admin-inquiries-tools admin-booking-tools">
           <label>Service<input type="text" [(ngModel)]="newSlot.service" name="slotService" placeholder="Aerial"></label>
           <label>Date<input type="date" [(ngModel)]="newSlot.date" name="slotDate"></label>
+          <label>Range<select [(ngModel)]="newSlot.range" name="slotRange">
+            <option *ngFor="let option of publishRangeOptions" [value]="option.value">{{ option.label }}</option>
+          </select></label>
           <label>Opens<input type="time" [(ngModel)]="newSlot.openTime" name="slotOpen"></label>
           <label>Closes<input type="time" [(ngModel)]="newSlot.closeTime" name="slotClose"></label>
           <label>Session minutes<input type="number" min="15" max="1440" [(ngModel)]="newSlot.sessionMinutes" name="slotDuration"></label>
           <label>Gap minutes<input type="number" min="0" max="1440" [(ngModel)]="newSlot.gapMinutes" name="slotGap"></label>
           <label>Session fee ($)<input type="number" min="1" [(ngModel)]="newSlot.sessionFee" name="slotFee"></label>
           <label>Location<input type="text" [(ngModel)]="newSlot.location" name="slotLocation" placeholder="Optional"></label>
-          <button type="button" class="underlined" (click)="createSlot()">Publish day +</button>
+          <label class="admin-unblock-day"><input type="checkbox" [(ngModel)]="newSlot.unblockDay" name="slotUnblockDay"> Unblock {{ newSlot.range === 'day' ? 'this day' : 'these days' }} (ignore blocked hours)</label>
+          <button type="button" class="underlined" (click)="createSlot()">Publish {{ newSlot.range === 'day' ? 'day' : newSlot.range }} +</button>
           <button type="button" class="underlined" (click)="setAdminView('bookings')">Refresh <span>&#8635;</span></button>
         </div>
         <p class="error" *ngIf="adminBookingError">{{ adminBookingError }}</p>
@@ -259,14 +266,18 @@
         <div class="admin-blocks" *ngIf="!adminBookingLoading">
           <div class="admin-block-form admin-unblock-form">
             <label>Date<input type="date" [(ngModel)]="newUnblock.date" name="unblockDate"></label>
-            <label>Start time (optional)<input type="time" [(ngModel)]="newUnblock.startTime" name="unblockStart"></label>
+            <label>To (optional, for a range)<input type="date" [(ngModel)]="newUnblock.endDate" name="unblockEndDate"></label>
+            <label>Start time (optional)<input type="time" [(ngModel)]="newUnblock.startTime" name="unblockStart" [disabled]="!!newUnblock.endDate"></label>
             <label>Reason<input type="text" [(ngModel)]="newUnblock.reason" name="unblockReason" placeholder="One-off opening"></label>
-            <button type="button" class="underlined" (click)="createUnblock()">Unblock +</button>
+            <button type="button" class="underlined" (click)="createUnblock()">{{ newUnblock.endDate ? 'Unblock range +' : 'Unblock +' }}</button>
           </div>
           <p class="admin-block-hint">
-            Unblocks carve one-off exceptions out of the blocked hours above. Leave the start time
-            empty to free a whole day; set it to free just that session. Re-publish the day if its
-            sessions were never created.
+            Days are open by default -- an unblock is only needed when a block above covers the day.
+            Leave the start time empty to free a whole day; set it to free just that session. Set "To" to
+            unblock every day in that range that's actually blocked -- days already open are skipped, so
+            you don't need to know in advance which ones need it (start time is ignored in this mode).
+            If nothing was ever published for a freed day, the notice below tells you and fills in the
+            Publish form -- an unblock alone does not create sessions.
           </p>
           <ul class="admin-block-list" *ngIf="adminUnblocks.length">
             <li *ngFor="let rule of adminUnblocks">

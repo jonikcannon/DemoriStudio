@@ -1296,23 +1296,14 @@ app.get('/api/booking/slots', (req, res) => {
   });
 });
 
-// Holds the day, then opens a Stripe session for the deposit. The hold expires
-// on its own if the client never pays, so an abandoned checkout cannot park a
-// date indefinitely.
-app.post('/api/booking/hold', rateLimit({ windowMs: 900000, max: 20, message: { error: 'Too many booking attempts. Please try again shortly.' } }), async (req, res) => {
-  const name = String(req.body?.name || '').trim();
-  const email = String(req.body?.email || '').trim();
-  if (name.length < 2 || name.length > 120) return res.status(400).json({ error: 'Please enter your name.' });
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Please enter a valid email.' });
-  if (!stripe) return res.status(503).json({ error: 'Stripe is not configured yet.' });
-
-  const held = bookingStore.holdSlot(String(req.body?.slotId || ''), {
-    name,
-    email,
-    phone: String(req.body?.phone || '').trim(),
-    notes: String(req.body?.notes || '').trim()
-  });
-  if (held.error) return res.status(held.status || 400).json({ error: held.error });
+// Shared by /api/booking/hold and /api/booking/request-hold: holds an already
+// -identified slot, opens a Stripe session for the deposit, and returns either
+// an { error, status } to relay as-is or the response body to send. The hold
+// expires on its own if the client never pays, so an abandoned checkout cannot
+// park a date indefinitely.
+async function holdSlotAndCheckout(slotId, { name, email, phone, notes }) {
+  const held = bookingStore.holdSlot(slotId, { name, email, phone, notes });
+  if (held.error) return { error: held.error, status: held.status || 400 };
 
   const booking = held.booking;
   const order = orderStore.createPendingOrder({
@@ -1363,11 +1354,57 @@ app.post('/api/booking/hold', rateLimit({ windowMs: 900000, max: 20, message: { 
     console.error('Stripe booking session failed:', error?.message || error);
     // Give the day straight back rather than leaving it held for the full window.
     bookingStore.cancelBooking(booking.id);
-    return res.status(502).json({ error: 'Could not start checkout. Please try again.' });
+    return { error: 'Could not start checkout. Please try again.', status: 502 };
   }
 
   orderStore.attachSession(order.id, session.id);
-  res.json({ url: session.url, bookingId: booking.id, deposit: booking.deposit, balanceDue: booking.balanceDue });
+  return { body: { url: session.url, bookingId: booking.id, deposit: booking.deposit, balanceDue: booking.balanceDue } };
+}
+
+// Holds the day, then opens a Stripe session for the deposit.
+app.post('/api/booking/hold', rateLimit({ windowMs: 900000, max: 20, message: { error: 'Too many booking attempts. Please try again shortly.' } }), async (req, res) => {
+  const name = String(req.body?.name || '').trim();
+  const email = String(req.body?.email || '').trim();
+  if (name.length < 2 || name.length > 120) return res.status(400).json({ error: 'Please enter your name.' });
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Please enter a valid email.' });
+  if (!stripe) return res.status(503).json({ error: 'Stripe is not configured yet.' });
+
+  const result = await holdSlotAndCheckout(String(req.body?.slotId || ''), {
+    name,
+    email,
+    phone: String(req.body?.phone || '').trim(),
+    notes: String(req.body?.notes || '').trim()
+  });
+  if (result.error) return res.status(result.status).json({ error: result.error });
+  res.json(result.body);
+});
+
+// A visitor requesting a date with nothing published: creates the slot on
+// demand (priced from the service's listed starting price, since there is no
+// studio-set fee to read yet) and then reuses the exact same hold + Stripe
+// pipeline as booking an already-published time.
+app.post('/api/booking/request-hold', rateLimit({ windowMs: 900000, max: 20, message: { error: 'Too many booking attempts. Please try again shortly.' } }), async (req, res) => {
+  const name = String(req.body?.name || '').trim();
+  const email = String(req.body?.email || '').trim();
+  if (name.length < 2 || name.length > 120) return res.status(400).json({ error: 'Please enter your name.' });
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Please enter a valid email.' });
+  if (!stripe) return res.status(503).json({ error: 'Stripe is not configured yet.' });
+
+  const created = bookingStore.createRequestedSlot({
+    service: req.body?.service,
+    date: req.body?.date,
+    startTime: req.body?.startTime
+  });
+  if (created.error) return res.status(created.status || 400).json({ error: created.error });
+
+  const result = await holdSlotAndCheckout(created.slotId, {
+    name,
+    email,
+    phone: String(req.body?.phone || '').trim(),
+    notes: String(req.body?.notes || '').trim()
+  });
+  if (result.error) return res.status(result.status).json({ error: result.error });
+  res.json(result.body);
 });
 
 app.get('/api/admin/bookings', auth, (req, res) => {
@@ -1401,20 +1438,45 @@ app.get('/api/admin/booking/slots', auth, (req, res) => {
   });
 });
 
-// Publishes one day's open hours; the store expands it into bookable starts.
+// Publishes open hours for one day, or -- when endDate is present -- for
+// every calendar day from date to endDate inclusive (the admin panel's
+// week/month range options).
 app.post('/api/admin/booking/slots', auth, (req, res) => {
-  const created = bookingStore.publishDay({
-    service: req.body?.service,
-    date: req.body?.date,
-    openTime: req.body?.openTime,
-    closeTime: req.body?.closeTime,
-    sessionFee: req.body?.sessionFee,
-    sessionMinutes: req.body?.sessionMinutes,
-    gapMinutes: req.body?.gapMinutes,
-    location: req.body?.location
-  });
+  const endDate = String(req.body?.endDate || '').trim();
+  const created = endDate
+    ? bookingStore.publishRange({
+      service: req.body?.service,
+      startDate: req.body?.date,
+      endDate,
+      openTime: req.body?.openTime,
+      closeTime: req.body?.closeTime,
+      sessionFee: req.body?.sessionFee,
+      sessionMinutes: req.body?.sessionMinutes,
+      gapMinutes: req.body?.gapMinutes,
+      location: req.body?.location,
+      unblockDays: Boolean(req.body?.unblockDay)
+    })
+    : bookingStore.publishDay({
+      service: req.body?.service,
+      date: req.body?.date,
+      openTime: req.body?.openTime,
+      closeTime: req.body?.closeTime,
+      sessionFee: req.body?.sessionFee,
+      sessionMinutes: req.body?.sessionMinutes,
+      gapMinutes: req.body?.gapMinutes,
+      location: req.body?.location,
+      unblockDay: Boolean(req.body?.unblockDay)
+    });
   if (created.error) return res.status(400).json({ error: created.error });
-  res.status(201).json({ slots: created.slots, created: created.created, skipped: created.skipped });
+  res.status(201).json({
+    slots: created.slots,
+    created: created.created,
+    skipped: created.skipped,
+    unblockedDay: Boolean(created.unblockedDay),
+    daysPublished: created.daysPublished,
+    daysAttempted: created.daysAttempted,
+    daysSkippedPast: created.daysSkippedPast
+  });
 });
 
 app.delete('/api/admin/booking/slots/:id', auth, (req, res) => {
@@ -1466,7 +1528,21 @@ app.get('/api/admin/booking/unblocks', auth, (req, res) => {
   });
 });
 
+// A single date/session, or -- when endDate is present -- every day from
+// date to endDate inclusive that a block actually covers (the admin panel's
+// bulk unblock).
 app.post('/api/admin/booking/unblocks', auth, (req, res) => {
+  const endDate = String(req.body?.endDate || '').trim();
+  if (endDate) {
+    const created = bookingStore.unblockRange({
+      startDate: req.body?.date,
+      endDate,
+      reason: req.body?.reason
+    });
+    if (created.error) return res.status(400).json({ error: created.error });
+    return res.status(201).json(created);
+  }
+
   const created = bookingStore.createUnblock({
     date: req.body?.date,
     startTime: req.body?.startTime,

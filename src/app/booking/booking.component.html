@@ -35,8 +35,8 @@
     </div>
 
     <p class="booking-empty" *ngIf="!slots.length">
-      No sessions are open at the moment.
-      <button type="button" class="underlined" (click)="enquire.emit()">Ask about availability</button>
+      No sessions are open at the moment. Pick a date below to request one, or
+      <button type="button" class="underlined" (click)="enquire.emit()">ask about availability</button>.
     </p>
 
     <!-- Picking a date can fail (no sessions that day for the chosen service).
@@ -67,8 +67,9 @@
           *ngFor="let day of calendarDays; trackBy: trackByCalendarDay"
           [class.outside-month]="!day.inMonth"
           [class.available]="day.available"
+          [class.requestable]="day.requestable"
           [class.selected]="day.selected"
-          [disabled]="!day.available"
+          [disabled]="!day.available && !day.requestable"
           (click)="selectCalendarDate(day)">
           <span>{{ day.date ? parseDay(day.date).getDate() : '' }}</span>
         </button>
@@ -94,6 +95,56 @@
           <span class="time-chip-fee">{{ money(slot.deposit) }} deposit</span>
         </button>
       </div>
+    </div>
+
+    <!-- Requesting a date with nothing published yet: no studio-set fee exists
+         to check out against, so the deposit is estimated from the service's
+         starting price and paid the same way as an already-published time --
+         paying provisionally holds this exact date and time. -->
+    <div class="booking-times booking-request" *ngIf="requestDateInput">
+      <div class="booking-times-head">
+        <h3>Request {{ formatDay(requestDateInput) }}</h3>
+        <button type="button" class="underlined" (click)="cancelRequest()">Clear</button>
+      </div>
+      <p class="booking-times-hint">
+        No sessions are published for this date yet. Pick a time and pay the deposit to provisionally hold it --
+        the balance is priced from the service's starting rate and settled once we confirm the details.
+      </p>
+      <form class="booking-form" (ngSubmit)="submitRequest()">
+        <label>
+          Service
+          <select name="requestService" [(ngModel)]="requestForm.service" required>
+            <option value="" disabled>Choose a service</option>
+            <option *ngFor="let service of serviceCatalog" [value]="service">{{ service }}</option>
+          </select>
+        </label>
+        <label>
+          Time
+          <input type="time" name="requestTime" [(ngModel)]="requestForm.startTime" required>
+        </label>
+        <label>
+          Name
+          <input type="text" name="requestName" [(ngModel)]="requestForm.name" required autocomplete="name">
+        </label>
+        <label>
+          Email
+          <input type="email" name="requestEmail" [(ngModel)]="requestForm.email" required autocomplete="email">
+        </label>
+        <label>
+          Phone <span class="optional">optional</span>
+          <input type="tel" name="requestPhone" [(ngModel)]="requestForm.phone" autocomplete="tel">
+        </label>
+        <label>
+          Anything we should know <span class="optional">optional</span>
+          <textarea name="requestNotes" [(ngModel)]="requestForm.notes" placeholder="Location, the story you want told, number of people..."></textarea>
+        </label>
+        <div class="booking-actions">
+          <button type="submit" class="booking-pay" [disabled]="requestSubmitting">
+            {{ requestSubmitting ? 'Starting checkout...' : 'Reserve ' + formatDay(requestDateInput) + ' with a deposit' }}
+          </button>
+          <button type="button" class="booking-back" (click)="cancelRequest()" [disabled]="requestSubmitting">Cancel</button>
+        </div>
+      </form>
     </div>
 
     <div class="booking-groups" *ngIf="!selectedDateInput && dayGroups.length">

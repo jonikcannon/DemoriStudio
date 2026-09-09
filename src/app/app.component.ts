@@ -6,7 +6,7 @@ import { GalleryComponent } from './gallery/gallery.component';
 import { Service, ServicesComponent } from './services/services.component';
 import { AboutComponent } from './about/about.component';
 import { Product, ProductEditPayload, ProductOrderPayload, ProductsComponent } from './products/products.component';
-import { BookingComponent, BookingRequest, BookingSlot } from './booking/booking.component';
+import { BookingComponent, BookingDateRequest, BookingRequest, BookingSlot } from './booking/booking.component';
 import { CartComponent, CartItem } from './cart/cart.component';
 import { getApiBaseUrl, mediaUrl } from './media-url';
 import { defaultSiteContent, NavKey, SiteContent, SiteSection } from './site-content';
@@ -256,6 +256,11 @@ export class AppComponent implements OnInit {
   bookingError = '';
   bookingPolicy = '';
   bookingHoldMinutes = 15;
+  bookingRequestSubmitting = false;
+  // Kept in sync BY HAND with SERVICE_STARTING_PRICES in server/booking.js.
+  // Digital prints is a mail-order product with no date/session, so it is not
+  // offered when requesting a day to reserve with a deposit.
+  readonly bookableServiceNames = ['Spaces', 'Aerial', 'Portraits'];
   adminBookings: any[] = [];
   adminSlots: any[] = [];
   adminBookingError = '';
@@ -263,19 +268,29 @@ export class AppComponent implements OnInit {
   newSlot = {
     service: 'Aerial',
     date: '',
+    range: 'day' as 'day' | 'week' | 'month',
     openTime: '09:00',
     closeTime: '17:00',
     sessionFee: 800,
     sessionMinutes: 120,
     gapMinutes: 30,
-    location: ''
+    location: '',
+    unblockDay: false
   };
+  readonly publishRangeOptions: Array<{ value: 'day' | 'week' | 'month'; label: string }> = [
+    { value: 'day', label: 'Day' },
+    { value: 'week', label: 'Week' },
+    { value: 'month', label: 'Month' }
+  ];
   adminBookingNotice = '';
   adminBlocks: any[] = [];
   adminUnblocks: any[] = [];
   // A one-off exception to a recurring block: free a whole day (empty time) or a
-  // single session so it can be published and booked.
-  newUnblock = { date: '', startTime: '', reason: '' };
+  // single session so it can be published and booked. endDate, when set, turns
+  // this into a bulk unblock across every day in [date, endDate] -- startTime
+  // is ignored in that mode since a range unblocks whole days, not one
+  // recurring time across many of them.
+  newUnblock = { date: '', endDate: '', startTime: '', reason: '' };
   // Mon-Fri is the case this exists for: a day job that rules out weekday hours.
   newBlock = { weekdays: [1, 2, 3, 4, 5], startTime: '09:00', endTime: '17:00', reason: '' };
   readonly weekdayOptions = [
@@ -347,6 +362,37 @@ export class AppComponent implements OnInit {
     void this.loadGallery();
     void this.loadProducts();
     this.initGoogleSignIn();
+    void this.handleBookingCheckoutReturn();
+  }
+
+  // Stripe sends the visitor back to success_url/cancel_url on
+  // /api/booking/hold and /api/booking/request-hold -- there is no router to
+  // catch that as a route, so this reads the plain query string instead. The
+  // webhook (not this) is what actually confirms the booking; this only tells
+  // the visitor what happened and gets them back to the Booking tab.
+  private async handleBookingCheckoutReturn() {
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get('booking');
+    if (status !== 'success' && status !== 'cancel') return;
+
+    // Strip the param immediately so a refresh cannot re-show the notice or
+    // re-run this branch.
+    const url = new URL(window.location.href);
+    url.searchParams.delete('booking');
+    window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+
+    this.openBooking();
+    if (status === 'success') {
+      await this.showNotice(
+        'Payment received -- your deposit is confirmed and the date is reserved. We will be in touch to confirm the details.',
+        'Booking confirmed'
+      );
+    } else {
+      await this.showNotice(
+        'Checkout was cancelled. Your hold may still be active for a few more minutes if you want to try again.',
+        'Checkout cancelled'
+      );
+    }
   }
   private async loadContent() {
     try {
@@ -835,7 +881,12 @@ export class AppComponent implements OnInit {
   openBooking() {
     this.activeSection = 'booking';
     this.menuOpen = false;
-    if (!this.bookingSlots.length) void this.loadBookingSlots();
+    // Always refetch rather than reusing a cached list: listOpenSlots already
+    // excludes blocked times server-side, but a block added after this
+    // visitor's first fetch (e.g. while they browsed elsewhere on the site)
+    // would otherwise leave an now-blocked time sitting in the panel as if it
+    // were still bookable, until a full page reload happened to clear it.
+    void this.loadBookingSlots();
   }
 
   private async loadBookingSlots() {
@@ -884,6 +935,37 @@ export class AppComponent implements OnInit {
     }
   }
 
+  // Nothing is published for this date yet, so there is no studio-set fee to
+  // check out against -- the server creates the slot on demand, priced from
+  // the service's starting rate, then this follows the exact same
+  // hold-then-redirect-to-Stripe path as onBookSlot. Errors surface through
+  // the same `error` input the paid flow already uses, and the request form's
+  // fields are left as the visitor typed them so a failed attempt is a retry,
+  // not a re-type.
+  async onRequestDate(request: BookingDateRequest) {
+    if (this.bookingRequestSubmitting) return;
+    this.bookingRequestSubmitting = true;
+    this.bookingError = '';
+    try {
+      const response = await fetch(`${this.api}/booking/request-hold`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request)
+      });
+      const body = await response.json();
+      if (!response.ok || !body?.url) {
+        this.bookingError = String(body?.error || 'Could not start checkout. Please try again.');
+        return;
+      }
+      window.location.href = body.url;
+    } catch (error) {
+      console.error('Booking date request failed.', error);
+      this.bookingError = 'Could not reach the booking service. Please try again.';
+    } finally {
+      this.bookingRequestSubmitting = false;
+    }
+  }
+
   private async loadAdminBookings() {
     if (!this.adminToken) return;
     this.adminBookingLoading = true;
@@ -908,6 +990,36 @@ export class AppComponent implements OnInit {
     this.adminBookingLoading = false;
   }
 
+  private parseDateKey(date: string): Date {
+    const [year, month, day] = String(date).split('-').map(Number);
+    return new Date(year, (month || 1) - 1, day || 1);
+  }
+
+  private formatDateKey(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  // "Week" is 7 consecutive days starting on the chosen date. "Month" runs to
+  // the end of that date's calendar month rather than a fixed 30-day span, so
+  // starting mid-month reads as "publish the rest of it" -- the more useful
+  // reading when the admin is filling a gap partway through a month.
+  private publishRangeEndDate(date: string, range: 'day' | 'week' | 'month'): string {
+    const start = this.parseDateKey(date);
+    if (range === 'week') {
+      const end = new Date(start);
+      end.setDate(end.getDate() + 6);
+      return this.formatDateKey(end);
+    }
+    if (range === 'month') {
+      // Day 0 of the following month is the last day of this one.
+      return this.formatDateKey(new Date(start.getFullYear(), start.getMonth() + 1, 0));
+    }
+    return date;
+  }
+
   async createSlot() {
     this.adminBookingError = '';
     this.adminBookingNotice = '';
@@ -915,19 +1027,23 @@ export class AppComponent implements OnInit {
       this.adminBookingError = 'Pick a date to publish.';
       return;
     }
+    const endDate = this.publishRangeEndDate(this.newSlot.date, this.newSlot.range);
+    const isRange = endDate !== this.newSlot.date;
     const response = await fetch(`${this.api}/admin/booking/slots`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.adminToken}` },
       body: JSON.stringify({
         service: this.newSlot.service,
         date: this.newSlot.date,
+        endDate: isRange ? endDate : undefined,
         openTime: this.newSlot.openTime,
         closeTime: this.newSlot.closeTime,
         // The form takes whole dollars; the API works in cents throughout.
         sessionFee: Math.round(Number(this.newSlot.sessionFee) * 100),
         sessionMinutes: Number(this.newSlot.sessionMinutes) || 0,
         gapMinutes: Number(this.newSlot.gapMinutes) || 0,
-        location: this.newSlot.location
+        location: this.newSlot.location,
+        unblockDay: this.newSlot.unblockDay
       })
     });
     const body = await response.json();
@@ -935,12 +1051,22 @@ export class AppComponent implements OnInit {
       this.adminBookingError = String(body?.error || 'Could not publish that day.');
       return;
     }
-    // Say what the hours actually expanded to -- publishing a day is the one
-    // admin action whose result is not obvious from the inputs.
+    // Say what the hours actually expanded to -- publishing a day (or range of
+    // days) is the one admin action whose result is not obvious from the inputs.
     const skipped = Number(body?.skipped) || 0;
-    this.adminBookingNotice = `Published ${body?.created} session${body?.created === 1 ? '' : 's'}`
+    const daysPublished = Number(body?.daysPublished) || 0;
+    const unblockedDays = Number(body?.unblockedDays) || 0;
+    const rangeNote = isRange ? ` across ${daysPublished} day${daysPublished === 1 ? '' : 's'}` : '';
+    const unblockedNote = !body?.unblockedDay
+      ? ''
+      : isRange
+        ? `${unblockedDays} day${unblockedDays === 1 ? '' : 's'} unblocked. `
+        : 'Day unblocked. ';
+    this.adminBookingNotice = unblockedNote
+      + `Published ${body?.created} session${body?.created === 1 ? '' : 's'}${rangeNote}`
       + (skipped ? `, skipped ${skipped} already published or past.` : '.');
     this.newSlot.date = '';
+    this.newSlot.unblockDay = false;
     await this.loadAdminBookings();
     this.bookingSlots = [];
   }
@@ -997,24 +1123,52 @@ export class AppComponent implements OnInit {
       this.adminBookingError = 'Pick a date to unblock.';
       return;
     }
+    const date = this.newUnblock.date;
+    const endDate = this.newUnblock.endDate;
+    const isRange = !!endDate && endDate !== date;
+    const startTime = isRange ? '' : this.newUnblock.startTime;
+
     const response = await fetch(`${this.api}/admin/booking/unblocks`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.adminToken}` },
-      body: JSON.stringify({
-        date: this.newUnblock.date,
-        startTime: this.newUnblock.startTime,
-        reason: this.newUnblock.reason
-      })
+      body: JSON.stringify({ date, endDate: isRange ? endDate : undefined, startTime, reason: this.newUnblock.reason })
     });
     const body = await response.json();
     if (!response.ok) {
       this.adminBookingError = String(body?.error || 'Could not unblock that day or session.');
       return;
     }
-    this.adminBookingNotice = this.newUnblock.startTime
-      ? `Unblocked ${this.newUnblock.date} at ${this.newUnblock.startTime}. Re-publish the day if those sessions were never created.`
-      : `Unblocked ${this.newUnblock.date}. Re-publish the day if its sessions were never created.`;
-    this.newUnblock = { date: '', startTime: '', reason: '' };
+
+    if (isRange) {
+      const unblockedDays = Number(body?.unblockedDays) || 0;
+      const skipped = Number(body?.daysSkippedNotBlocked) || 0;
+      this.adminBookingNotice = unblockedDays
+        ? `Unblocked ${unblockedDays} day${unblockedDays === 1 ? '' : 's'} from ${date} to ${endDate}`
+          + (skipped ? ` (${skipped} already open, skipped).` : '.')
+          + ' Days with no sessions published yet still need publishing above to become bookable.'
+        : `Nothing to unblock from ${date} to ${endDate} -- none of those days are blocked.`;
+    } else {
+      // An unblock only lifts the block rule -- it cannot bring back a session
+      // that publishDay skipped and never wrote a row for. Without this check
+      // the admin sees "Unblocked" and reasonably assumes visitors can now
+      // book it, when nothing on the public calendar actually changed.
+      const alreadyBookable = this.adminSlots.some(slot => (
+        slot.date === date && slot.status === 'open' && (!startTime || slot.startTime === startTime)
+      ));
+      if (alreadyBookable) {
+        this.adminBookingNotice = startTime
+          ? `Unblocked ${date} at ${startTime}. That session is bookable now.`
+          : `Unblocked ${date}. Its sessions are bookable now.`;
+      } else {
+        this.newSlot.date = date;
+        this.newSlot.range = 'day';
+        this.newSlot.unblockDay = false;
+        this.adminBookingNotice = `Unblocked ${date}${startTime ? ` at ${startTime}` : ''}, but no sessions are `
+          + 'published for it yet, so nothing changed for visitors. Set hours above and click "Publish day +" to '
+          + 'create them -- the date is already filled in.';
+      }
+    }
+    this.newUnblock = { date: '', endDate: '', startTime: '', reason: '' };
     await this.loadAdminBookings();
     this.bookingSlots = [];
   }

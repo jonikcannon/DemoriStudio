@@ -285,6 +285,133 @@ cleanly in `DESTINATION` rather than leaving a dead or half-configured feature:
 - Do not remove Home or the Contact panel — every remaining tab's inquiry
   links depend on `activeSection = 'contact'` staying reachable.
 
+## Booking Tab Behavior
+
+Only relevant if Book was kept. The self-serve calendar has several behaviors
+a clone must preserve — easy to regress when editing templates or the booking
+store, and several have been fixed before:
+
+- **The calendar always renders, and an empty one is still interactive.** In
+  `src/app/booking/booking.component.html` the picker (`div.booking-picker`)
+  is gated only by `!loading && !selectedSlot` — never by `slots.length`. With
+  zero open slots the visitor still sees the calendar with the "No sessions
+  are open" message above it, instead of a blank panel. Days with no slot
+  are not simply disabled, either: `calendarDays` marks every non-past day
+  `requestable` whenever `isEmpty` (`!slots.length`), and `selectCalendarDate`
+  / `selectDateInput` route a requestable pick into a "request this date" lead
+  form instead of a dead end. Keep the empty message *inside* the picker, keep
+  the Service filter hidden until `serviceOptions.length` is non-zero, and keep
+  the "Open days" list gated on `dayGroups.length`.
+- **The public slot list is refetched every time the Booking tab opens, not
+  cached.** `AppComponent.openBooking` used to only fetch when `bookingSlots`
+  was empty; `listOpenSlots` already excludes blocked times server-side, but a
+  block added *after* a visitor's first fetch (while they browsed elsewhere on
+  the site) left that now-blocked time sitting in the public time-chip panel
+  as if it were still bookable, until a full page reload happened to clear it.
+  `holdSlot` still re-checks `slotIsBlocked` right before holding, so a stale
+  chip could never actually be paid for -- it was a display bug, not a
+  booking-integrity one, but a real one. `openBooking` now always calls
+  `loadBookingSlots`, so every (re)visit to the tab reflects current blocks.
+- **Requesting a date with nothing published still goes through Stripe.** There
+  is no studio-set fee to read a deposit from, so `server/booking.js` keeps a
+  hand-maintained `SERVICE_STARTING_PRICES` (service name → cents) — the
+  cheapest listed tier for each bookable service, since the `services` array's
+  tier prices in `app.component.ts` are display strings ("$175 - $250") with no
+  machine-readable number. `POST /api/booking/request-hold` calls
+  `createRequestedSlot`, which creates the slot row on demand (`requested: true`,
+  priced from that table, still checked against `isBlocked` so a deposit cannot
+  provisionally hold a date the studio has ruled out) and is idempotent on
+  (date, service, startTime) — a second request for the same one reuses the
+  existing row rather than double-booking it, returning 409 once it is held.
+  The slot's id is then handed to the *same* `holdSlot` → Stripe →
+  `confirmBooking`/webhook pipeline `/api/booking/hold` uses, via a shared
+  `holdSlotAndCheckout` helper in `server.js` — a request and a normal booking
+  differ only in how the slot to hold comes to exist. `BookingComponent` emits
+  a `requestDate` event (`BookingDateRequest`: date, startTime, service, name,
+  email, phone, notes) with a *required* clock time (unlike a published slot's
+  optional one, since this call creates the slot) and `AppComponent.onRequestDate`
+  redirects to the returned Stripe URL exactly like `onBookSlot` does — on
+  failure it leaves the form's fields as typed, since this is a checkout retry,
+  not a lead that vanishes into an inbox. `serviceCatalog`
+  (`AppComponent.bookableServiceNames`) intentionally excludes any service
+  absent from `SERVICE_STARTING_PRICES` — e.g. Digital prints, a mail-order
+  product with no date/session — keep the two lists in sync by hand.
+- **Blocks vs. unblocks.** Availability is shaped by two stores under
+  `storage/bookings/`: `blocks.jsonl` holds recurring weekday rules (e.g.
+  Mon–Fri 09:00–17:00 for a day job) and `unblocks.jsonl` holds one-off
+  exceptions that carve a specific date — or a single date+time session — back
+  out of a block. `isBlocked()` in `server/booking.js` checks unblocks first, so
+  an unblock lifts a matching block; the override is applied in **both** places
+  blocks act (`publishOneDay`, the per-day unit both `publishDay` and
+  `publishRange` call, so a freed session is actually created, and
+  `listOpenSlots`, so a freed already-published session becomes bookable). If
+  you add a place that consults blocks, consult unblocks there too or the two
+  will disagree.
+- **Publishing a range of days.** `publishRange(startDate, endDate, ...)`
+  repeats `publishOneDay` across every calendar day in the (inclusive) range,
+  capped at `MAX_PUBLISH_RANGE_DAYS` (62). `validatePublishParams` is shared
+  with `publishDay` so a range rejects bad hours/fees exactly like a single day
+  does, checked once rather than once per day. `POST /api/admin/booking/slots`
+  dispatches to `publishRange` when the body includes `endDate`, otherwise the
+  original single-day `publishDay`. The admin panel's Range select (Day / Week
+  / Month) computes that `endDate` client-side in
+  `AppComponent.publishRangeEndDate` — Week is 7 days from the chosen date,
+  Month runs to the end of that date's calendar month (not a fixed 30 days),
+  so starting mid-month reads as "publish the rest of it."
+- **Admin unblock UI, and the gap it cannot close by itself.** `GET/POST/DELETE
+  /api/admin/booking/unblocks` manage the exceptions; `GET
+  /api/admin/booking/slots` returns a per-slot `blocked` flag so the admin
+  panel shows a "blocked" badge and a one-click **Unblock** action on hidden
+  open sessions — that path already works end to end because the slot row
+  already exists. Freeing a day that `publishDay`/`publishOneDay` skipped
+  (never wrote a row for) is different: an unblock rule alone changes nothing a
+  visitor can see. `AppComponent.createUnblock` checks `adminSlots` for an
+  existing open row on that date/time and, if there is none, does **not**
+  claim success — it pre-fills the Publish form's date and tells the admin to
+  publish. The one-step alternative is the "Unblock this day" checkbox on the
+  Publish form itself (`newSlot.unblockDay` → `publishOneDay`'s `unblockDay`
+  param), which unblocks and publishes together; prefer pointing admins at
+  that (or at Range + unblock for a whole blocked stretch) over the standalone
+  Unblock form when the day was never published.
+- **Bulk-unblocking a range.** Days are open by default — a block is the only
+  thing that closes one, so "unblock everything" really means "unblock every
+  day that's actually blocked, across a span." `unblockRange(startDate,
+  endDate, reason)` in `server/booking.js` walks every day in the (inclusive)
+  range, silently skipping any day that's in the past, already unblocked, or
+  not covered by a block (returned as `daysSkippedPast` /
+  `daysSkippedNotBlocked`) rather than erroring — the whole point is not
+  needing to know in advance which of the range's days need it. It is
+  whole-day only, unlike the single-date form's optional `startTime`: a range
+  unblocks days, not one recurring time across many of them. `POST
+  /api/admin/booking/unblocks` dispatches to it when the body includes
+  `endDate`, mirroring how the slots endpoint dispatches to `publishRange`.
+  The admin panel's unblock form gained a "To" date input for this
+  (`newUnblock.endDate`) — set, it disables the Start time field and swaps the
+  button to "Unblock range +". Like the single-day case, a bulk unblock does
+  not publish anything; days it frees that were never published still need
+  the Publish form (ideally with its own Range option) run over them.
+- **Booking checkout is deposit-based and idempotent.** A slot is held before
+  its Stripe session; a failed session creation cancels the hold immediately,
+  and `confirmBooking` is idempotent so a webhook retry cannot double-book. Keep
+  the raw-body webhook handling and the hold-expiry sweep (`releaseExpiredHolds`)
+  intact.
+- **The return from Stripe is a plain query string, not a route.** There is no
+  router (see the Gotchas note below), so `success_url`/`cancel_url` on both
+  booking checkout routes land back on `/?booking=success` or
+  `/?booking=cancel` with nothing to catch that automatically.
+  `AppComponent.handleBookingCheckoutReturn`, called from `ngOnInit`, reads
+  `window.location.search` directly, strips the `booking` param via
+  `history.replaceState` (read once, so a refresh cannot re-show the notice),
+  switches to the Booking tab, and shows a confirmation/cancellation dialog
+  through the existing `showNotice` prompt-dialog mechanism. This only informs
+  the visitor -- the webhook (`fulfilOrder` → `confirmBooking`) is what
+  actually confirms the booking, and already ran (or will, on retry)
+  independently of whether the visitor's browser ever lands back on the site.
+  The shop cart's own checkout uses the same `?checkout=success`/`?checkout=cancel`
+  pattern and does **not** have an equivalent handler yet -- if a clone needs
+  post-payment feedback there too, mirror this method rather than inventing a
+  second query-param convention.
+
 ## Media and Integrations
 
 - The clone ships with an empty media library by design — no images or

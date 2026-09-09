@@ -106,3 +106,5 @@
 .admin-booking-tools label,.admin-block-form label{display:block;min-width:0;font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;color:#5f625d}
 .admin-booking-tools label input,.admin-block-form label input{display:block;width:100%;margin-top:5px;border:1px solid #9ea198;background:#f4f2ec;padding:7px 8px;font:13px Arial,Helvetica,sans-serif;color:#1f211d}
 .admin-booking-tools .underlined,.admin-block-form .underlined{white-space:nowrap;justify-self:start}
+.admin-booking-tools .admin-unblock-day{display:flex;align-items:center;gap:8px;align-self:end;text-transform:none;letter-spacing:0;font-weight:400}
+.admin-booking-tools .admin-unblock-day input{width:auto;margin:0}
