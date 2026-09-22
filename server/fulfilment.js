@@ -14,6 +14,16 @@
 // recorded on the order as `failed` with the reason, for the studio to retry
 // by hand from the admin view.
 
+// Mirrors toOriginalKey() in server.js, watermark-media.js and
+// rename-r2-objects.js: the print job must be filled from the clean master,
+// never from `item.imageKey` directly -- that is the *public* gallery path,
+// and watermark-media.js stamps that copy in place. Printing it would put the
+// site's own watermark on a customer's paid physical print.
+const ORIGINALS_PREFIX = 'originals/';
+function toOriginalKey(galleryKey) {
+  return String(galleryKey || '').replace(/^assets\/gallery\//, ORIGINALS_PREFIX);
+}
+
 const PRINT_SIZE_LABELS = {
   '4x6': '4 x 6 in',
   '5x7': '5 x 7 in',
@@ -38,7 +48,15 @@ function buildJobSummary(order, items) {
     'Print items:',
     ...items.map(item => `  - ${describeItem(item)}`),
     '',
-    'Source files:',
+    // Points at the unwatermarked master, not item.imageKey (the public,
+    // watermarked gallery object) -- see the note on toOriginalKey above.
+    // Videos have no master (watermark-media.js skips them; README), so that
+    // key is the only copy and is already clean.
+    'Source files (unwatermarked master -- if this key 404s in R2, the item is',
+    ' a video and item.imageKey below is already the clean, un-watermarked file):',
+    ...items.map(item => `  - ${item.imageKey ? toOriginalKey(item.imageKey) : 'no object key recorded'}`),
+    '',
+    'Public gallery keys (for reference; do NOT print these -- watermarked):',
     ...items.map(item => `  - ${item.imageKey || 'no object key recorded'}`)
   ].join('\n');
 }
@@ -104,5 +122,6 @@ module.exports = {
   getProvider,
   listProviders,
   selectPrintItems,
-  submitPrintJob
+  submitPrintJob,
+  toOriginalKey
 };

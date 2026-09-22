@@ -1742,32 +1742,47 @@ app.get('/api/download/:token', async (req, res) => {
     });
   }
 
-  const order = orderStore.findOrderById(String(decoded?.orderId || ''));
-  if (!order || order.status !== orderStore.STATUS.PAID) {
-    return res.status(404).json({ error: 'Order not found.' });
+  // Everything past this point touched a real paid order and a real R2 read,
+  // so it must never fail silently: with no catch here, a thrown error inside
+  // an async handler becomes an unhandled rejection that Express never sees,
+  // and the request just hangs (open connection, zero bytes) until the
+  // buyer's browser gives up -- worse than a clean error for someone who paid.
+  try {
+    const order = orderStore.findOrderById(String(decoded?.orderId || ''));
+    if (!order || order.status !== orderStore.STATUS.PAID) {
+      return res.status(404).json({ error: 'Order not found.' });
+    }
+
+    const itemIndex = Number(decoded?.itemIndex);
+    const item = Number.isInteger(itemIndex) ? order.items[itemIndex] : null;
+    if (!item || !item.deliverDigital || !item.imageKey) {
+      return res.status(404).json({ error: 'That item has no downloadable file.' });
+    }
+
+    const object = await fetchOriginalObject(item.imageKey);
+    if (!object) return res.status(404).json({ error: 'File unavailable. Please contact us.' });
+
+    const fileName = item.imageKey.split('/').pop() || 'demori-studio-download';
+    res.setHeader('Content-Type', object.contentType || 'application/octet-stream');
+    if (object.contentLength) res.setHeader('Content-Length', String(object.contentLength));
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader('Cache-Control', 'private, no-store');
+    // Best-effort: a bad download count must not cost the buyer their file.
+    try {
+      orderStore.countDownload(order.id, itemIndex);
+    } catch (error) {
+      console.error('countDownload failed (continuing to serve the file):', error?.message || error);
+    }
+
+    object.body.on('error', (error) => {
+      console.error('Download stream failed:', error?.message || error);
+      if (!res.headersSent) res.status(502).end();
+    });
+    object.body.pipe(res);
+  } catch (error) {
+    console.error('Download route failed:', error?.message || error);
+    if (!res.headersSent) res.status(500).json({ error: 'Could not process this download. Please contact us.' });
   }
-
-  const itemIndex = Number(decoded?.itemIndex);
-  const item = Number.isInteger(itemIndex) ? order.items[itemIndex] : null;
-  if (!item || !item.deliverDigital || !item.imageKey) {
-    return res.status(404).json({ error: 'That item has no downloadable file.' });
-  }
-
-  const object = await fetchOriginalObject(item.imageKey);
-  if (!object) return res.status(404).json({ error: 'File unavailable. Please contact us.' });
-
-  const fileName = item.imageKey.split('/').pop() || 'demori-studio-download';
-  res.setHeader('Content-Type', object.contentType || 'application/octet-stream');
-  if (object.contentLength) res.setHeader('Content-Length', String(object.contentLength));
-  res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
-  res.setHeader('Cache-Control', 'private, no-store');
-  orderStore.countDownload(order.id, itemIndex);
-
-  object.body.on('error', (error) => {
-    console.error('Download stream failed:', error?.message || error);
-    if (!res.headersSent) res.status(502).end();
-  });
-  object.body.pipe(res);
 });
 
 app.get('/api/admin/orders', auth, (req, res) => {
