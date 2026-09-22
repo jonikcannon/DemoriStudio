@@ -143,32 +143,34 @@ export class AppComponent implements OnInit {
       text: 'Select any published image from the Products page and order professional digital prints with consistent color, archival paper options, and batch-ready pricing.',
       image: mediaUrl('assets/gallery/nature/lake-below-the-footbridge.jpg'),
       mediaType: 'image',
+      // Mirrors PRINT_SIZE_OPTIONS in products.component.ts, which is what
+      // checkout actually charges -- keep the two in sync by hand.
       pricingTitle: 'Comprehensive print pricing (up to 8 x 11)',
       tiers: [
         {
           label: '4 x 6 print',
-          price: '$6 each',
-          details: '10+ copies: $5 each, 25+ copies: $4.50 each, 50+ copies: $4 each.'
+          price: '$7 each',
+          details: '10+ copies: $6 each, 25+ copies: $5.50 each, 50+ copies: $5 each.'
         },
         {
           label: '5 x 7 print',
-          price: '$9 each',
-          details: '10+ copies: $8 each, 25+ copies: $7 each, 50+ copies: $6.50 each.'
+          price: '$11 each',
+          details: '10+ copies: $9.50 each, 25+ copies: $8.50 each, 50+ copies: $8 each.'
         },
         {
           label: '6 x 8 print',
-          price: '$12 each',
-          details: '10+ copies: $11 each, 25+ copies: $10 each, 50+ copies: $9 each.'
+          price: '$14.50 each',
+          details: '10+ copies: $13 each, 25+ copies: $12 each, 50+ copies: $11 each.'
         },
         {
           label: '8 x 10 print',
-          price: '$16 each',
-          details: '10+ copies: $15 each, 25+ copies: $13.50 each, 50+ copies: $12 each.'
+          price: '$19 each',
+          details: '10+ copies: $18 each, 25+ copies: $16 each, 50+ copies: $14.50 each.'
         },
         {
           label: '8 x 11 print',
-          price: '$18 each',
-          details: '10+ copies: $16.50 each, 25+ copies: $15 each, 50+ copies: $13.50 each.'
+          price: '$21.50 each',
+          details: '10+ copies: $20 each, 25+ copies: $18 each, 50+ copies: $16 each.'
         }
       ],
       addons: [
@@ -650,6 +652,29 @@ export class AppComponent implements OnInit {
   }
   trackByCategory(_: number, category: string) { return category; }
   trackByProduct(_: number, product: Product) { return product.id; }
+  // Admin "Published products" grid: the catalog runs to 150+ items, which was
+  // rendering as one long scroll of thumbnails. Paged client-side since the
+  // full list is already in memory (this.products) for the admin panel.
+  readonly productsPageSize = 24;
+  productsPage = 1;
+  get totalProductPages(): number {
+    return Math.max(1, Math.ceil(this.products.length / this.productsPageSize));
+  }
+  // Clamps on read rather than requiring every publish/delete call site to
+  // remember to fix up the page number -- e.g. deleting the last item on the
+  // last page must not strand the view on a now-empty page.
+  get pagedProducts(): Product[] {
+    const totalPages = this.totalProductPages;
+    if (this.productsPage > totalPages) this.productsPage = totalPages;
+    if (this.productsPage < 1) this.productsPage = 1;
+    const start = (this.productsPage - 1) * this.productsPageSize;
+    return this.products.slice(start, start + this.productsPageSize);
+  }
+  goToProductsPage(page: number) {
+    this.productsPage = Math.min(Math.max(1, page), this.totalProductPages);
+  }
+  previousProductsPage() { this.goToProductsPage(this.productsPage - 1); }
+  nextProductsPage() { this.goToProductsPage(this.productsPage + 1); }
   trackByInquiry(_: number, inquiry: Inquiry) { return inquiry.id; }
   trackByCartItem(_: number, item: CartItem) { return item.cartItemId; }
   trackByGalleryItem(_: number, item: GalleryItem) { return item.image; }
@@ -870,6 +895,7 @@ export class AppComponent implements OnInit {
   }
   setAdminView(view: 'content' | 'products' | 'inquiries' | 'bookings') {
     this.adminView = view;
+    if (view === 'products') this.productsPage = 1;
     if (view === 'content' && this.adminToken) void this.loadAdminContent();
     if (view === 'inquiries' && this.adminToken && !this.inquiries.length) {
       void this.loadInquiries();

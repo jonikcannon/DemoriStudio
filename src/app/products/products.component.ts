@@ -33,12 +33,15 @@ export type ProductOrderPayload = {
   includeDigitalCopy: boolean;
 };
 
+// Base prices and bulk-discount tiers raised 20% across the board (was $6 /
+// $9 / $12 / $16 / $18 base), then rounded to the nearest $0.50 to keep the
+// same clean price-point style rather than landing on odd cents like $7.20.
 export const PRINT_SIZE_OPTIONS: PrintSizeOption[] = [
-  { size: '4x6', label: '4 x 6', unitPrice: 6, priceBreaks: [{ minQty: 1, unitPrice: 6 }, { minQty: 10, unitPrice: 5 }, { minQty: 25, unitPrice: 4.5 }, { minQty: 50, unitPrice: 4 }] },
-  { size: '5x7', label: '5 x 7', unitPrice: 9, priceBreaks: [{ minQty: 1, unitPrice: 9 }, { minQty: 10, unitPrice: 8 }, { minQty: 25, unitPrice: 7 }, { minQty: 50, unitPrice: 6.5 }] },
-  { size: '6x8', label: '6 x 8', unitPrice: 12, priceBreaks: [{ minQty: 1, unitPrice: 12 }, { minQty: 10, unitPrice: 11 }, { minQty: 25, unitPrice: 10 }, { minQty: 50, unitPrice: 9 }] },
-  { size: '8x10', label: '8 x 10', unitPrice: 16, priceBreaks: [{ minQty: 1, unitPrice: 16 }, { minQty: 10, unitPrice: 15 }, { minQty: 25, unitPrice: 13.5 }, { minQty: 50, unitPrice: 12 }] },
-  { size: '8x11', label: '8 x 11', unitPrice: 18, priceBreaks: [{ minQty: 1, unitPrice: 18 }, { minQty: 10, unitPrice: 16.5 }, { minQty: 25, unitPrice: 15 }, { minQty: 50, unitPrice: 13.5 }] }
+  { size: '4x6', label: '4 x 6', unitPrice: 7, priceBreaks: [{ minQty: 1, unitPrice: 7 }, { minQty: 10, unitPrice: 6 }, { minQty: 25, unitPrice: 5.5 }, { minQty: 50, unitPrice: 5 }] },
+  { size: '5x7', label: '5 x 7', unitPrice: 11, priceBreaks: [{ minQty: 1, unitPrice: 11 }, { minQty: 10, unitPrice: 9.5 }, { minQty: 25, unitPrice: 8.5 }, { minQty: 50, unitPrice: 8 }] },
+  { size: '6x8', label: '6 x 8', unitPrice: 14.5, priceBreaks: [{ minQty: 1, unitPrice: 14.5 }, { minQty: 10, unitPrice: 13 }, { minQty: 25, unitPrice: 12 }, { minQty: 50, unitPrice: 11 }] },
+  { size: '8x10', label: '8 x 10', unitPrice: 19, priceBreaks: [{ minQty: 1, unitPrice: 19 }, { minQty: 10, unitPrice: 18 }, { minQty: 25, unitPrice: 16 }, { minQty: 50, unitPrice: 14.5 }] },
+  { size: '8x11', label: '8 x 11', unitPrice: 21.5, priceBreaks: [{ minQty: 1, unitPrice: 21.5 }, { minQty: 10, unitPrice: 20 }, { minQty: 25, unitPrice: 18 }, { minQty: 50, unitPrice: 16 }] }
 ];
 
 export type ProductEditPayload = {
