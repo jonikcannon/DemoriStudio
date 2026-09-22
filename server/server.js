@@ -666,6 +666,14 @@ function updateInquiryById(id, updater) {
   return updated;
 }
 
+function deleteInquiryById(id) {
+  const inquiries = readInquiries();
+  const remaining = inquiries.filter(inquiry => inquiry.id !== id);
+  if (remaining.length === inquiries.length) return false;
+  writeInquiries(remaining);
+  return true;
+}
+
 function getMailerConfig() {
   const host = String(process.env.SMTP_HOST || '').trim();
   const user = String(process.env.SMTP_USER || '').trim();
@@ -862,6 +870,132 @@ app.patch('/api/admin/content', auth, (req, res) => {
   }
 });
 
+// Site-branding media uploaded from the admin Site content form: the logo, hero
+// background video and poster, About portrait, and About feature images.
+//
+// Files go through saveProductMedia, so they land in the same storage (Google
+// Drive when configured, else local /uploads/) as product images. What gets
+// stored in the content, though, must not expire. saveProductMedia's Drive
+// result is a signed /api/media/<token> link that stops working after
+// GOOGLE_MEDIA_TOKEN_TTL (12h by default) -- fine for product responses, which
+// are re-signed on every request, but fatal for a value saved into content. So
+// Drive uploads are registered under an opaque id and stored as
+// /api/site-media/<id>, which the route below serves for as long as the
+// registry entry exists.
+const SITE_MEDIA_SLOTS = {
+  siteLogo: { kind: 'image', maxBytes: 5 * 1024 * 1024 },
+  heroPoster: { kind: 'image', maxBytes: 15 * 1024 * 1024 },
+  aboutPortrait: { kind: 'image', maxBytes: 15 * 1024 * 1024 },
+  aboutFeature: { kind: 'image', maxBytes: 15 * 1024 * 1024 },
+  heroVideo: { kind: 'video', maxBytes: 45 * 1024 * 1024 }
+};
+
+// The stored extension comes from the validated type, never from the uploaded
+// filename: /uploads is served as static files, so a name like "x.html" on an
+// "image/png" upload would otherwise be served back as a page on our origin.
+const SITE_MEDIA_TYPES = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+  'image/gif': '.gif',
+  'image/avif': '.avif',
+  'video/mp4': '.mp4',
+  'video/webm': '.webm',
+  'video/quicktime': '.mov'
+};
+
+const siteMediaRegistryFile = path.join(__dirname, '../storage/content/site-media.json');
+
+function readSiteMediaRegistry() {
+  try {
+    return JSON.parse(fs.readFileSync(siteMediaRegistryFile, 'utf8')) || {};
+  } catch {
+    return {};
+  }
+}
+
+function registerSiteMedia(id, entry) {
+  const registry = readSiteMediaRegistry();
+  registry[id] = entry;
+  fs.mkdirSync(path.dirname(siteMediaRegistryFile), { recursive: true });
+  fs.writeFileSync(siteMediaRegistryFile, `${JSON.stringify(registry, null, 2)}\n`, 'utf8');
+}
+
+async function saveSiteMedia({ fileName, mimeType, buffer }) {
+  const upload = await saveProductMedia({ fileName, mimeType, buffer });
+  if (upload.storageProvider !== 'gdrive') return upload.image;
+  const id = randomUUID();
+  registerSiteMedia(id, { driveFileId: upload.driveFileId, mimeType: upload.driveMimeType || mimeType });
+  return `/api/site-media/${id}`;
+}
+
+app.post('/api/admin/content-media', auth, async (req, res) => {
+  const slot = String(req.body?.slot || '').trim();
+  const media = req.body?.media;
+  const rules = Object.prototype.hasOwnProperty.call(SITE_MEDIA_SLOTS, slot) ? SITE_MEDIA_SLOTS[slot] : null;
+  if (!rules) return res.status(400).json({ error: 'Unknown media slot.' });
+  if (!media?.data || !media?.mimeType) return res.status(400).json({ error: 'Media is required.' });
+
+  const mimeType = String(media.mimeType).toLowerCase();
+  const ext = SITE_MEDIA_TYPES[mimeType];
+  if (!ext || !mimeType.startsWith(`${rules.kind}/`)) {
+    return res.status(400).json({
+      error: rules.kind === 'video'
+        ? 'The hero background must be an MP4, WebM, or MOV video.'
+        : 'Please choose a JPG, PNG, WebP, GIF, or AVIF image.'
+    });
+  }
+
+  try {
+    const buffer = Buffer.from(String(media.data), 'base64');
+    if (!buffer.length) return res.status(400).json({ error: 'Media is required.' });
+    if (buffer.length > rules.maxBytes) {
+      return res.status(400).json({ error: `Please choose a file smaller than ${Math.round(rules.maxBytes / (1024 * 1024))} MB.` });
+    }
+    const image = await saveSiteMedia({ fileName: `${slot}-${randomUUID()}${ext}`, mimeType, buffer });
+    return res.status(201).json({ image });
+  } catch (error) {
+    console.error('Site media upload failed:', error);
+    return res.status(500).json({ error: 'Upload failed.' });
+  }
+});
+
+// Public: this media is shown on the public site. Only ids registered by an
+// admin upload above resolve, so this can't be used to read arbitrary Drive files.
+app.get('/api/site-media/:id', async (req, res) => {
+  const entry = readSiteMediaRegistry()[String(req.params.id || '')];
+  if (!entry?.driveFileId || !driveClient) return res.status(404).json({ error: 'Media unavailable.' });
+
+  try {
+    // Forward Range so an autoplaying hero video can seek and loop instead of
+    // re-downloading from the start.
+    const range = req.headers.range;
+    const response = await driveClient.files.get({
+      fileId: String(entry.driveFileId),
+      alt: 'media',
+      supportsAllDrives: true
+    }, {
+      responseType: 'stream',
+      headers: range ? { Range: range } : {}
+    });
+
+    res.status(response.status === 206 ? 206 : 200);
+    res.setHeader('Content-Type', entry.mimeType || response.headers['content-type'] || 'application/octet-stream');
+    for (const header of ['content-length', 'content-range', 'accept-ranges']) {
+      if (response.headers[header]) res.setHeader(header, response.headers[header]);
+    }
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    response.data.on('error', (error) => {
+      console.error('Site media stream failed:', error.message || error);
+      if (!res.headersSent) res.status(502).end(); else res.destroy();
+    });
+    response.data.pipe(res);
+  } catch (error) {
+    console.error('Site media proxy error:', error.message || error);
+    return res.status(404).json({ error: 'Media unavailable.' });
+  }
+});
+
 app.get('/api/admin/inquiries', auth, (req, res) => {
   const query = String(req.query.q || '').trim().toLowerCase();
   const serviceFilter = String(req.query.service || '').trim();
@@ -899,6 +1033,18 @@ app.patch('/api/admin/inquiries/:id', auth, (req, res) => {
 
   if (!updated) return res.status(404).json({ error: 'Inquiry not found.' });
   return res.json({ inquiry: updated });
+});
+
+app.delete('/api/admin/inquiries/:id', auth, (req, res) => {
+  const id = String(req.params.id || '').trim();
+  if (!id) return res.status(400).json({ error: 'Inquiry id is required.' });
+  try {
+    if (!deleteInquiryById(id)) return res.status(404).json({ error: 'Inquiry not found.' });
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error('Inquiry delete failed:', error);
+    return res.status(500).json({ error: 'Could not delete this inquiry.' });
+  }
 });
 
 app.post('/api/admin/products', auth, async (req, res) => {

@@ -36,6 +36,9 @@ type Inquiry = {
 })
 export class AppComponent implements OnInit {
   content: SiteContent = defaultSiteContent;
+  private readonly defaultLogo = 'assets/brand/logo-mark.svg';
+  get logoMark(): string { return this.content.site.logo || this.defaultLogo; }
+  contentMediaUploading: { [key: string]: boolean } = {};
   private readonly categoryOrder = ['Nature', 'Others', 'Beach', 'Hikes', 'Aerial'];
   menuOpen = false;
   showAll = false;
@@ -54,11 +57,19 @@ export class AppComponent implements OnInit {
   // media but is skipped by the manifest: buildManifest() only walks the
   // folders in CATEGORIES, so the hero never becomes a gallery item or a
   // product.
-  readonly heroVideo = mediaUrl('assets/gallery/hero/hero-surf-rocky-shoreline.mp4');
+  private readonly defaultHeroVideo = mediaUrl('assets/gallery/hero/hero-surf-rocky-shoreline.mp4');
   // Bundled rather than put in the bucket: watermark-media.js stamps every
   // image under assets/gallery/ regardless of folder, and a watermarked poster
   // flashing before an unwatermarked video looks like a bug.
-  readonly heroPoster = 'assets/hero-poster.jpg';
+  private readonly defaultHeroPoster = 'assets/hero-poster.jpg';
+  // The defaults above apply until an admin uploads replacements through the
+  // Site content form; uploaded files live outside assets/gallery/, so the
+  // watermark script never touches them.
+  get heroVideo(): string { return this.content.hero.video ? mediaUrl(this.content.hero.video) : this.defaultHeroVideo; }
+  get heroPoster(): string { return this.content.hero.poster ? mediaUrl(this.content.hero.poster) : this.defaultHeroPoster; }
+  get heroVideoLabel(): string {
+    return this.content.hero.video ? 'Background video' : 'Aerial drone footage: surf breaking over a rocky shoreline';
+  }
   activeSection: SiteSection = 'home';
   readonly navKeys: NavKey[] = ['catalog', 'services', 'booking', 'about'];
   adminOpen = false;
@@ -74,6 +85,7 @@ export class AppComponent implements OnInit {
   product = { title: '', category: 'Print', price: 95, description: '' };
   adminEmail = '';
   adminPassword = '';
+  adminLoginSubmitting = false;
   adminToken = sessionStorage.getItem('demori_admin_token') || '';
   adminAuthProvider = sessionStorage.getItem('demori_admin_provider') || '';
   adminError = '';
@@ -235,6 +247,24 @@ export class AppComponent implements OnInit {
       addons: [
         { label: 'Additional retouched images', price: '$15 / image', details: 'Expanded final gallery beyond the included delivery count.' },
         { label: 'Rush turnaround', price: '$75', details: '48-hour edit delivery for time-sensitive announcements or campaigns.' }
+      ]
+    },
+    {
+      name: 'Websites',
+      icon: '▤',
+      title: 'Custom website design and development',
+      text: 'Clean, fast, easy-to-manage websites built around your photography, portfolio, or small business -- from a single landing page to a full multi-page site with booking and a shop.',
+      image: mediaUrl('assets/gallery/nature/cloud-reflections-on-still-water.jpg'),
+      mediaType: 'image',
+      pricingTitle: 'Website pricing',
+      tiers: [
+        { label: 'Landing page', price: '$300 - $500', details: 'A single page with your story, contact details, and a clear call to action.' },
+        { label: 'Business site', price: '$800 - $1,500', details: 'Multi-page site with a gallery, services, and booking or contact forms.' },
+        { label: 'Custom build', price: '$1,500+', details: 'Bespoke design, e-commerce, or integrations beyond a standard site.' }
+      ],
+      addons: [
+        { label: 'Ongoing updates and hosting', price: '$40 - $100 / month', details: 'Content updates, backups, and uptime monitoring after launch.' },
+        { label: 'Domain and email setup', price: '$50', details: 'One-time setup for a custom domain and business email.' }
       ]
     }
   ];
@@ -400,6 +430,7 @@ export class AppComponent implements OnInit {
       if (!response.ok) return;
       const incoming = await response.json();
       this.content = { ...defaultSiteContent, ...incoming };
+      this.applyTheme();
       this.changeDetector.detectChanges();
     } catch {
       // The tracked defaults keep the public shell usable while the API is unavailable.
@@ -774,24 +805,34 @@ export class AppComponent implements OnInit {
   }
   @HostListener('document:keydown', ['$event'])
   handleKeyboardEvent(event: KeyboardEvent) {
+    // The prompt dialog renders above every other overlay (see
+    // .prompt-dialog-backdrop's z-index), so while it's open it must own
+    // every keystroke -- otherwise Escape/Enter here could also bubble down
+    // into whatever modal it was opened on top of (e.g. a delete
+    // confirmation raised from the admin panel).
     if (this.promptDialogOpen) {
       if (event.key === 'Escape') {
         event.preventDefault();
         this.onPromptDialogCancel();
-        return;
-      }
-      if (event.key === 'Enter') {
+      } else if (event.key === 'Enter') {
         event.preventDefault();
         this.onPromptDialogConfirm();
-        return;
       }
+      return;
+    }
+
+    if (event.key === 'Escape') {
+      // Close only the topmost overlay, in the same stacking order as their
+      // z-index (admin modal above the cart drawer above the media viewer),
+      // since more than one of these can be open at once -- e.g. opening the
+      // cart, then Admin login from the header, leaves both mounted.
+      if (this.adminOpen) { this.closeAdmin(); return; }
+      if (this.isCartOpen) { this.closeCartView(); return; }
+      if (this.isMediaViewerOpen) { this.closeMediaViewer(); return; }
+      return;
     }
 
     if (!this.isMediaViewerOpen) return;
-    if (event.key === 'Escape') {
-      this.closeMediaViewer();
-      return;
-    }
     if (event.key === 'ArrowLeft') {
       event.preventDefault();
       this.showPreviousMedia();
@@ -849,6 +890,7 @@ export class AppComponent implements OnInit {
       const body = await response.json();
       if (!response.ok) throw new Error(body?.error || 'Could not load site content.');
       this.content = body.content || body;
+      this.applyTheme();
     } catch (error) {
       this.adminError = error instanceof Error ? error.message : 'Could not load site content.';
     }
@@ -866,17 +908,144 @@ export class AppComponent implements OnInit {
           site: this.content.site,
           navigation: this.content.navigation,
           hero: this.content.hero,
+          statement: this.content.statement,
+          about: { ...this.content.about, features: this.savableAboutFeatures() },
+          websites: this.savableWebsites(),
+          theme: this.content.theme,
           contact: this.content.contact
         })
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body?.error || 'Could not save site content.');
       this.content = body.content;
+      this.applyTheme();
     } catch (error) {
       this.adminError = error instanceof Error ? error.message : 'Could not save site content.';
     }
     this.contentSaving = false;
   }
+
+  // Pushes the saved palette into the CSS custom properties every stylesheet
+  // reads (see :root in src/styles.css). Setting them on the root element
+  // overrides those defaults everywhere at once, with no rebuild -- and an
+  // untouched theme is a no-op, since it equals the stylesheet's own defaults.
+  private applyTheme() {
+    const theme = this.content.theme || defaultSiteContent.theme;
+    const root = document.documentElement.style;
+    root.setProperty('--color-primary', theme.primary);
+    root.setProperty('--color-background', theme.background);
+    root.setProperty('--color-text', theme.text);
+  }
+  // Live preview while a picker is being dragged, before anything is saved.
+  onThemeChange() { this.applyTheme(); }
+  resetTheme() {
+    this.content.theme = { ...defaultSiteContent.theme };
+    this.applyTheme();
+  }
+
+  readonly heroCtaTargets: { value: SiteSection; label: string }[] = [
+    { value: 'products', label: 'Catalog' },
+    { value: 'services', label: 'Services' },
+    { value: 'booking', label: 'Book' },
+    { value: 'about', label: 'About' },
+    { value: 'contact', label: 'Contact' }
+  ];
+
+  // The About copy is stored as a list of paragraphs, but edited as one
+  // textarea with a blank line between paragraphs.
+  get aboutBody(): string { return (this.content.about.paragraphs || []).join('\n\n'); }
+  set aboutBody(value: string) {
+    this.content.about.paragraphs = String(value || '').split(/\n\s*\n/).map(part => part.trim()).filter(Boolean);
+  }
+
+  addAboutFeature() {
+    this.content.about.features = [...(this.content.about.features || []), { title: '', description: '', image: '' }];
+  }
+  removeAboutFeature(index: number) {
+    this.content.about.features = (this.content.about.features || []).filter((_, i) => i !== index);
+  }
+  // A row left completely blank is an "Add" click the admin abandoned, not
+  // content, so it is dropped rather than failing the whole save.
+  private savableAboutFeatures() {
+    return (this.content.about.features || [])
+      .map(feature => ({ title: feature.title.trim(), description: feature.description.trim(), image: feature.image }))
+      .filter(feature => feature.title || feature.description || feature.image);
+  }
+
+  addWebsite() {
+    this.content.websites = [...(this.content.websites || []), { title: '', url: '' }];
+  }
+  removeWebsite(index: number) {
+    this.content.websites = (this.content.websites || []).filter((_, i) => i !== index);
+  }
+  moveWebsite(index: number, direction: -1 | 1) {
+    const list = [...(this.content.websites || [])];
+    const target = index + direction;
+    if (target < 0 || target >= list.length) return;
+    [list[index], list[target]] = [list[target], list[index]];
+    this.content.websites = list;
+  }
+  private savableWebsites() {
+    return (this.content.websites || [])
+      .map(site => ({ title: site.title.trim(), url: site.url.trim() }))
+      .filter(site => site.title || site.url);
+  }
+
+  uploadSiteLogo(event: Event) {
+    return this.pickAndUploadContentMedia(event, 'siteLogo', 'image', 5, value => (this.content.site.logo = value));
+  }
+  uploadHeroVideo(event: Event) {
+    return this.pickAndUploadContentMedia(event, 'heroVideo', 'video', 45, value => (this.content.hero.video = value));
+  }
+  uploadHeroPoster(event: Event) {
+    return this.pickAndUploadContentMedia(event, 'heroPoster', 'image', 15, value => (this.content.hero.poster = value));
+  }
+  uploadAboutPortrait(event: Event) {
+    return this.pickAndUploadContentMedia(event, 'aboutPortrait', 'image', 15, value => (this.content.about.portrait = value));
+  }
+  uploadAboutFeatureImage(event: Event, index: number) {
+    return this.pickAndUploadContentMedia(event, 'aboutFeature', 'image', 15, value => (this.content.about.features[index].image = value), `aboutFeature-${index}`);
+  }
+
+  // Limits mirror SITE_MEDIA_SLOTS in server.js, which enforces them for real;
+  // checking here just avoids uploading tens of MB to be told no. `uploadingKey`
+  // defaults to the slot, but the About features share one slot across a list,
+  // so each passes its own key and only the row being uploaded shows progress.
+  private async pickAndUploadContentMedia(
+    event: Event,
+    slot: string,
+    kind: 'image' | 'video',
+    maxMegabytes: number,
+    apply: (path: string) => void,
+    uploadingKey: string = slot
+  ) {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file || !this.adminToken) return;
+    if (!file.type.startsWith(`${kind}/`)) { this.adminError = `Please choose ${kind === 'video' ? 'a video' : 'an image'} file.`; return; }
+    if (file.size > maxMegabytes * 1024 * 1024) { this.adminError = `Please choose a file smaller than ${maxMegabytes} MB.`; return; }
+    this.contentMediaUploading = { ...this.contentMediaUploading, [uploadingKey]: true };
+    this.adminError = '';
+    try {
+      const data = await file.arrayBuffer();
+      const media = { name: file.name, mimeType: file.type, data: this.toBase64(data) };
+      const response = await fetch(`${this.api}/admin/content-media`, {
+        method: 'POST',
+        headers: { ...this.adminHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slot, media })
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.error || 'Upload failed.');
+      apply(body.image);
+    } catch (error) {
+      this.adminError = error instanceof Error ? error.message : 'Upload failed.';
+    } finally {
+      this.contentMediaUploading = { ...this.contentMediaUploading, [uploadingKey]: false };
+    }
+  }
+
+  mediaUrl(path: string): string { return mediaUrl(path); }
 
   openBooking() {
     this.activeSection = 'booking';
@@ -1259,12 +1428,18 @@ export class AppComponent implements OnInit {
     this.uploadPreview = URL.createObjectURL(file);
   }
   async login() {
+    if (this.adminLoginSubmitting) return;
     this.adminError = '';
-    const response = await fetch(`${this.api}/admin/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: this.adminEmail, password: this.adminPassword }) });
-    const body = await response.json();
-    if (!response.ok) { this.adminError = body.error || 'Could not sign in.'; return; }
-    this.adminToken = body.token; sessionStorage.setItem('demori_admin_token', body.token); this.adminAuthProvider = body.provider || 'password'; sessionStorage.setItem('demori_admin_provider', this.adminAuthProvider); this.adminPassword = '';
-    void this.loadInquiries();
+    this.adminLoginSubmitting = true;
+    try {
+      const response = await fetch(`${this.api}/admin/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: this.adminEmail, password: this.adminPassword }) });
+      const body = await response.json();
+      if (!response.ok) { this.adminError = body.error || 'Could not sign in.'; return; }
+      this.adminToken = body.token; sessionStorage.setItem('demori_admin_token', body.token); this.adminAuthProvider = body.provider || 'password'; sessionStorage.setItem('demori_admin_provider', this.adminAuthProvider); this.adminPassword = '';
+      void this.loadInquiries();
+    } finally {
+      this.adminLoginSubmitting = false;
+    }
   }
   async googleLogin(token: string) {
     this.adminError = '';
@@ -1336,6 +1511,27 @@ export class AppComponent implements OnInit {
     } catch {
       this.inquiries = this.inquiries.map(inquiry => inquiry.id === inquiryId ? { ...inquiry, status: previous.status } : inquiry);
       this.inquiriesError = 'Network error while updating inquiry status.';
+    }
+  }
+  async deleteInquiry(inquiry: Inquiry) {
+    if (!this.adminToken) return;
+    if (!await this.requestConfirmation(`Delete the inquiry from ${inquiry.name}? This can't be undone.`, 'Delete inquiry')) return;
+    try {
+      const response = await fetch(`${this.api}/admin/inquiries/${encodeURIComponent(inquiry.id)}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${this.adminToken}` }
+      });
+      // 404 means it's already gone (e.g. deleted from another tab), which is
+      // the state the admin asked for, so drop it from the list either way.
+      if (!response.ok && response.status !== 404) {
+        const body = await response.json().catch(() => ({}));
+        this.inquiriesError = body.error || 'Could not delete this inquiry.';
+        return;
+      }
+      this.inquiries = this.inquiries.filter(item => item.id !== inquiry.id);
+      this.inquiriesError = '';
+    } catch {
+      this.inquiriesError = 'Network error while deleting the inquiry.';
     }
   }
   formatInquiryDate(value: string) {

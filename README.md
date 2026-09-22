@@ -172,7 +172,13 @@ and after the migration.
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `WATERMARK_TEXT` | `DEMORI STUDIO` | The mark itself |
-| `WATERMARK_STYLE` | `corner` | `corner` (discreet, bottom right) or `tiled` (repeated diagonally, far harder to crop off) |
+| `WATERMARK_STYLE` | `stretch` | `stretch` (one large mark spanning the full image width), `tiled` (repeated diagonally, far harder to crop off) or `corner` (discreet, bottom right) |
+
+To change the look of images that are already stamped, set `WATERMARK_STYLE` and run
+`npm run watermark -- --restyle` (add `--dry-run` first). Restyling rebuilds each public
+copy from its master under `originals/` and refuses to run on an image with no master,
+so a mark is never stamped on top of another mark. Public keys don't change, so browsers
+and the CDN can keep serving the old look for up to a week (`max-age=604800`).
 
 Videos are not watermarked. The 29 clips would need a full ffmpeg re-encode of
 several GB, which is a separate operation with its own risks.

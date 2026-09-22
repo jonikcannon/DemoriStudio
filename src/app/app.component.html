@@ -1,5 +1,5 @@
 <header class="nav">
-  <a class="brand" (click)="activeSection = 'home'; menuOpen = false">{{ content.site.brand }}</a>
+  <a class="brand" (click)="activeSection = 'home'; menuOpen = false"><img [src]="logoMark" alt="" class="brand-mark">{{ content.site.brand }}</a>
   <nav [class.open]="menuOpen">
     <a *ngIf="content.navigation.catalog.visible" [class.active]="activeSection === 'products'" (click)="activeSection = 'products'; menuOpen = false">{{ content.navigation.catalog.label }}</a>
     <a *ngIf="content.navigation.services.visible" [class.active]="activeSection === 'services'" (click)="activeSection = 'services'; menuOpen = false">{{ content.navigation.services.label }}</a>
@@ -19,7 +19,7 @@
          Angular creates the element and then sets attributes, so the property
          stays false, the browser treats the video as unmuted, and autoplay is
          refused with NotAllowedError. The attribute alone is not enough. -->
-    <div class="hero-image"><video [src]="heroVideo" [poster]="heroPoster" [muted]="true" autoplay loop playsinline disablepictureinpicture aria-label="Aerial drone footage: surf breaking over a rocky shoreline"></video><div class="hero-stamp">EST. 2014<br><b>✦</b><br>NEW YORK · BEYOND</div></div>
+    <div class="hero-image"><video [src]="heroVideo" [poster]="heroPoster" [muted]="true" autoplay loop playsinline disablepictureinpicture [attr.aria-label]="heroVideoLabel"></video><div class="hero-stamp">EST. 2014<br><b>✦</b><br>NEW YORK · BEYOND</div></div>
   </section>
 
   <section class="statement" *ngIf="activeSection === 'home'"><p class="eyebrow">{{ content.statement.eyebrow }}</p><h2>{{ content.statement.heading }}</h2><div class="statement-note">{{ content.statement.copy }}<span>↘</span></div></section>
@@ -77,6 +77,7 @@
     [services]="services" 
     [activeService]="activeService"
     [aerialVideos]="aerialServiceVideos"
+    [websites]="content.websites"
     (serviceChange)="activeService = $event"
     (contactClick)="activeSection = 'contact'"></app-services>
 
@@ -94,7 +95,7 @@
     (requestDate)="onRequestDate($event)"
     (enquire)="activeSection = 'contact'"></app-booking>
 
-  <app-about *ngIf="activeSection === 'about'" (contactClick)="activeSection = 'contact'"></app-about>
+  <app-about *ngIf="activeSection === 'about'" [content]="content.about" (contactClick)="activeSection = 'contact'"></app-about>
 
   <section id="contact" class="contact" *ngIf="activeSection === 'contact'"><p class="eyebrow">{{ content.contact.eyebrow }}</p><h2>{{ content.contact.heading }}</h2><a [href]="'mailto:' + content.contact.email" class="contact-link">{{ content.contact.email }} <span>↗</span></a></section>
 </main>
@@ -132,6 +133,12 @@
     <div *ngIf="!adminToken" class="login-card admin-login-card">
       <p>Sign in to manage products and publish gallery items.</p>
       <div id="google-signin-button" style="margin: 20px 0 0; text-align: center;"></div>
+      <div class="login-divider"><span>or</span></div>
+      <form (ngSubmit)="login()">
+        <label>Email<input type="email" name="adminLoginEmail" [(ngModel)]="adminEmail" required autocomplete="username"></label>
+        <label>Password<input type="password" name="adminLoginPassword" [(ngModel)]="adminPassword" required autocomplete="current-password"></label>
+        <button class="publish" type="submit" [disabled]="adminLoginSubmitting">{{ adminLoginSubmitting ? 'Signing in…' : 'Sign in' }} <span>→</span></button>
+      </form>
       <p class="error" *ngIf="adminError">{{adminError}}</p>
     </div>
 
@@ -143,24 +150,166 @@
         <button type="button" [class.active]="adminView === 'bookings'" (click)="setAdminView('bookings')">Bookings <span>{{ adminBookings.length }}</span></button>
       </div>
 
-      <section class="admin-products" *ngIf="adminView === 'content'">
+      <section class="admin-site-content" *ngIf="adminView === 'content'">
         <form (ngSubmit)="saveSiteContent()">
-          <h4>Site identity</h4>
-          <label>Business name<input [(ngModel)]="content.site.brand" name="contentBrand" required></label>
-          <label>Site description<textarea [(ngModel)]="content.site.description" name="contentDescription" required></textarea></label>
-          <label>Contact email<input [(ngModel)]="content.contact.email" name="contentEmail" type="email" required></label>
-          <label>Contact heading<input [(ngModel)]="content.contact.heading" name="contentHeading" required></label>
-          <h4>Home hero</h4>
-          <label>Eyebrow<input [(ngModel)]="content.hero.eyebrow" name="contentHeroEyebrow" required></label>
-          <label>Headline<input [(ngModel)]="content.hero.headline" name="contentHeroHeadline" required></label>
-          <label>Intro<textarea [(ngModel)]="content.hero.intro" name="contentHeroIntro" required></textarea></label>
-          <h4>Navigation</h4>
-          <label *ngFor="let item of navKeys">
-            <input type="checkbox" [(ngModel)]="content.navigation[item].visible" [name]="'visible-' + item">
-            Show {{ content.navigation[item].label }}
-          </label>
-          <button class="publish" type="submit" [disabled]="contentSaving">{{ contentSaving ? 'Saving…' : 'Save site content' }} <span>→</span></button>
-          <p class="error" *ngIf="adminError">{{ adminError }}</p>
+          <fieldset class="admin-card">
+            <legend>Site identity</legend>
+            <label>Business name<input [(ngModel)]="content.site.brand" name="contentBrand" required></label>
+            <label>Site description<textarea [(ngModel)]="content.site.description" name="contentDescription" required></textarea></label>
+            <label>Footer text<input [(ngModel)]="content.site.footerText" name="contentFooterText"></label>
+            <div class="media-field">
+              <label>Logo <span class="optional">shown in the header and footer</span>
+                <input type="file" accept="image/*" (change)="uploadSiteLogo($event)" [disabled]="!!contentMediaUploading['siteLogo']">
+              </label>
+              <div class="media-current" *ngIf="content.site.logo">
+                <img [src]="mediaUrl(content.site.logo)" alt="">
+                <div class="media-current-info"><b>Custom logo set</b><span>Choose a file above to replace it</span></div>
+              </div>
+              <p class="admin-inquiries-meta" *ngIf="contentMediaUploading['siteLogo']">Uploading…</p>
+              <button type="button" class="underlined" *ngIf="content.site.logo" (click)="content.site.logo = ''">Reset to default logo</button>
+            </div>
+          </fieldset>
+
+          <fieldset class="admin-card">
+            <legend>Home hero</legend>
+            <label>Eyebrow<input [(ngModel)]="content.hero.eyebrow" name="contentHeroEyebrow" required></label>
+            <label>Headline<input [(ngModel)]="content.hero.headline" name="contentHeroHeadline" required></label>
+            <label>Intro<textarea [(ngModel)]="content.hero.intro" name="contentHeroIntro" required></textarea></label>
+            <div class="two-up">
+              <label>Button text<input [(ngModel)]="content.hero.ctaLabel" name="contentHeroCtaLabel" required></label>
+              <label>Button links to<select [(ngModel)]="content.hero.ctaTarget" name="contentHeroCtaTarget">
+                <option *ngFor="let target of heroCtaTargets" [value]="target.value">{{ target.label }}</option>
+              </select></label>
+            </div>
+            <div class="media-field">
+              <label>Background video <span class="optional">MP4/WebM, up to 45 MB. H.264 MP4 plays in every browser; HEVC won't in Chrome/Firefox</span>
+                <input type="file" accept="video/mp4,video/webm,video/quicktime" (change)="uploadHeroVideo($event)" [disabled]="!!contentMediaUploading['heroVideo']">
+              </label>
+              <div class="media-current" *ngIf="content.hero.video">
+                <video [src]="mediaUrl(content.hero.video)" muted preload="metadata"></video>
+                <div class="media-current-info"><b>Custom video set</b><span>Choose a file above to replace it</span></div>
+              </div>
+              <p class="admin-inquiries-meta" *ngIf="contentMediaUploading['heroVideo']">Uploading…</p>
+              <button type="button" class="underlined" *ngIf="content.hero.video" (click)="content.hero.video = ''">Reset to default video</button>
+            </div>
+            <div class="media-field">
+              <label>Poster image <span class="optional">shown before the video loads</span>
+                <input type="file" accept="image/*" (change)="uploadHeroPoster($event)" [disabled]="!!contentMediaUploading['heroPoster']">
+              </label>
+              <div class="media-current" *ngIf="content.hero.poster">
+                <img [src]="mediaUrl(content.hero.poster)" alt="">
+                <div class="media-current-info"><b>Custom poster set</b><span>Choose a file above to replace it</span></div>
+              </div>
+              <p class="admin-inquiries-meta" *ngIf="contentMediaUploading['heroPoster']">Uploading…</p>
+              <button type="button" class="underlined" *ngIf="content.hero.poster" (click)="content.hero.poster = ''">Reset to default poster</button>
+            </div>
+          </fieldset>
+
+          <fieldset class="admin-card">
+            <legend>Home statement</legend>
+            <label>Eyebrow<input [(ngModel)]="content.statement.eyebrow" name="contentStatementEyebrow" required></label>
+            <label>Heading<input [(ngModel)]="content.statement.heading" name="contentStatementHeading" required></label>
+            <label>Copy<textarea [(ngModel)]="content.statement.copy" name="contentStatementCopy" required></textarea></label>
+          </fieldset>
+
+          <fieldset class="admin-card">
+            <legend>About page</legend>
+            <label>Eyebrow<input [(ngModel)]="content.about.eyebrow" name="contentAboutEyebrow" required></label>
+            <div class="two-up">
+              <label>Heading<input [(ngModel)]="content.about.heading" name="contentAboutHeading" required></label>
+              <label>Heading emphasis <span class="optional">italic, after the heading</span><input [(ngModel)]="content.about.headingEmphasis" name="contentAboutHeadingEmphasis"></label>
+            </div>
+            <label>Body <span class="optional">separate paragraphs with a blank line</span><textarea class="tall" [(ngModel)]="aboutBody" name="contentAboutBody" required></textarea></label>
+            <label>Button text<input [(ngModel)]="content.about.ctaLabel" name="contentAboutCtaLabel" required></label>
+            <div class="media-field">
+              <label>Portrait photo <span class="optional">up to 15 MB</span>
+                <input type="file" accept="image/*" (change)="uploadAboutPortrait($event)" [disabled]="!!contentMediaUploading['aboutPortrait']">
+              </label>
+              <div class="media-current" *ngIf="content.about.portrait">
+                <img [src]="mediaUrl(content.about.portrait)" alt="">
+                <div class="media-current-info"><b>Custom portrait set</b><span>Choose a file above to replace it</span></div>
+              </div>
+              <p class="admin-inquiries-meta" *ngIf="contentMediaUploading['aboutPortrait']">Uploading…</p>
+              <button type="button" class="underlined" *ngIf="content.about.portrait" (click)="content.about.portrait = ''">Reset to default portrait</button>
+            </div>
+          </fieldset>
+
+          <fieldset class="admin-card">
+            <legend>About page features</legend>
+            <p class="admin-card-hint">Shown below the About copy, each with an optional image.</p>
+            <div class="about-feature-editor" *ngFor="let feature of content.about.features; let i = index">
+              <div class="about-feature-editor-head">
+                <b>Feature {{ i + 1 }}</b>
+                <button type="button" class="underlined" (click)="removeAboutFeature(i)">Remove feature</button>
+              </div>
+              <label>Title<input [(ngModel)]="feature.title" [ngModelOptions]="{ standalone: true }" placeholder="e.g. Licensed drone pilot"></label>
+              <label>Description<textarea [(ngModel)]="feature.description" [ngModelOptions]="{ standalone: true }" placeholder="A short line about this feature"></textarea></label>
+              <div class="media-field">
+                <label>Image
+                  <input type="file" accept="image/*" (change)="uploadAboutFeatureImage($event, i)" [disabled]="!!contentMediaUploading['aboutFeature-' + i]">
+                </label>
+                <div class="media-current" *ngIf="feature.image">
+                  <img [src]="mediaUrl(feature.image)" alt="">
+                  <div class="media-current-info"><b>Image set</b><span>Choose a file above to replace it</span></div>
+                </div>
+                <p class="admin-inquiries-meta" *ngIf="contentMediaUploading['aboutFeature-' + i]">Uploading…</p>
+                <button type="button" class="underlined" *ngIf="feature.image" (click)="feature.image = ''">Remove image</button>
+              </div>
+            </div>
+            <button type="button" class="underlined" (click)="addAboutFeature()">Add feature +</button>
+          </fieldset>
+
+          <fieldset class="admin-card">
+            <legend>Website showcase</legend>
+            <p class="admin-card-hint">
+              Sites listed here appear as a scrollable list of live previews on the Websites service. Use full
+              https:// addresses. Some sites refuse to be embedded and will show blank -- visitors still get an
+              "Open site" link under each preview.
+            </p>
+            <div class="about-feature-editor" *ngFor="let site of content.websites; let i = index">
+              <div class="about-feature-editor-head">
+                <b>Site {{ i + 1 }}</b>
+                <span class="row-actions">
+                  <button type="button" class="underlined" [disabled]="i === 0" (click)="moveWebsite(i, -1)" aria-label="Move up">↑</button>
+                  <button type="button" class="underlined" [disabled]="i === content.websites.length - 1" (click)="moveWebsite(i, 1)" aria-label="Move down">↓</button>
+                  <button type="button" class="underlined" (click)="removeWebsite(i)">Remove</button>
+                </span>
+              </div>
+              <label>Title<input [(ngModel)]="site.title" [ngModelOptions]="{ standalone: true }" placeholder="e.g. Coastal Kayak Rentals"></label>
+              <label>Address<input type="url" [(ngModel)]="site.url" [ngModelOptions]="{ standalone: true }" placeholder="https://example.com"></label>
+            </div>
+            <button type="button" class="underlined" (click)="addWebsite()">Add website +</button>
+          </fieldset>
+
+          <fieldset class="admin-card">
+            <legend>Contact</legend>
+            <label>Eyebrow<input [(ngModel)]="content.contact.eyebrow" name="contentContactEyebrow" required></label>
+            <label>Contact heading<input [(ngModel)]="content.contact.heading" name="contentHeading" required></label>
+            <label>Contact email<input [(ngModel)]="content.contact.email" name="contentEmail" type="email" required></label>
+          </fieldset>
+
+          <fieldset class="admin-card">
+            <legend>Appearance</legend>
+            <div class="two-up theme-colors">
+              <label>Primary color <span class="optional">buttons, active states</span><input type="color" [(ngModel)]="content.theme.primary" (ngModelChange)="onThemeChange()" name="themePrimary"></label>
+              <label>Background color<input type="color" [(ngModel)]="content.theme.background" (ngModelChange)="onThemeChange()" name="themeBackground"></label>
+            </div>
+            <label>Text color<input type="color" [(ngModel)]="content.theme.text" (ngModelChange)="onThemeChange()" name="themeText"></label>
+            <button type="button" class="underlined" (click)="resetTheme()">Reset to original colors</button>
+          </fieldset>
+
+          <fieldset class="admin-card">
+            <legend>Navigation</legend>
+            <label class="checkbox-label" *ngFor="let item of navKeys">
+              <input type="checkbox" [(ngModel)]="content.navigation[item].visible" [name]="'visible-' + item">
+              Show {{ content.navigation[item].label }}
+            </label>
+          </fieldset>
+
+          <div class="admin-form-footer">
+            <button class="publish" type="submit" [disabled]="contentSaving">{{ contentSaving ? 'Saving…' : 'Save site content' }} <span>→</span></button>
+            <p class="error" *ngIf="adminError">{{ adminError }}</p>
+          </div>
         </form>
       </section>
 
@@ -176,9 +325,26 @@
           <div class="two-up"><label>Product type<select [(ngModel)]="product.category" name="category"><option>Print</option><option>Digital download</option><option>Stock video</option><option>Fine art</option></select></label><label>Price (USD)<input [(ngModel)]="product.price" name="price" type="number" min="1" required></label></div>
           <label>Description <textarea [(ngModel)]="product.description" name="description" placeholder="A few details about this piece..."></textarea></label>
           <button class="publish" type="submit" [disabled]="!uploadFile || uploading">{{ uploading ? 'Publishing…' : 'Publish to shop' }} <span>→</span></button>
-          <button type="button" class="underlined signout" (click)="logout()">Sign out</button>
           <p class="error" *ngIf="adminError">{{adminError}}</p>
         </form>
+
+        <div class="gallery-published" *ngIf="products.length">
+          <h4>Published products</h4>
+          <div class="gallery-published-grid">
+            <div class="gallery-published-item" *ngFor="let item of products; trackBy: trackByProduct">
+              <div class="gallery-published-thumb">
+                <img *ngIf="item.mediaType === 'image'" [src]="item.image" [alt]="item.title">
+                <video *ngIf="item.mediaType === 'video'" [src]="item.image" muted preload="metadata"></video>
+                <b *ngIf="item.mediaType === 'video'" class="gallery-published-badge">Video</b>
+              </div>
+              <div class="gallery-published-info">
+                <span>{{ item.title }} &middot; {{ formatMoney(item.price) }}</span>
+                <button type="button" class="underlined" (click)="onDeleteProduct(item)">Delete</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <button type="button" class="underlined signout" (click)="logout()">Sign out</button>
       </section>
 
       <section class="admin-inquiries" *ngIf="adminView === 'inquiries'">
@@ -204,6 +370,7 @@
             <div class="inquiry-card-foot">
               <label>Status<select [ngModel]="inquiry.status" (ngModelChange)="updateInquiryStatus(inquiry.id, $event)" [name]="'status-' + inquiry.id"><option value="new">New</option><option value="in-progress">In progress</option><option value="closed">Closed</option></select></label>
               <span class="inquiry-delivery" [class.ok]="inquiry.emailDelivered">{{ inquiry.emailDelivered ? 'Email delivered' : 'Email pending/fallback' }}</span>
+              <button type="button" class="underlined" (click)="deleteInquiry(inquiry)">Delete</button>
             </div>
           </article>
         </div>
@@ -348,4 +515,4 @@
   </aside>
 </div>
 
-<footer><a class="brand">{{ content.site.brand }}</a><p>© 2026 {{ content.site.brand }}. {{ content.site.footerText }}</p><div><a (click)="openAdmin()">Admin</a><a *ngFor="let link of content.site.socialLinks" [href]="link.url" target="_blank" rel="noreferrer">{{ link.label }}</a></div></footer>
+<footer><a class="brand" (click)="activeSection = 'home'; menuOpen = false"><img src="assets/brand/logo-mark-reversed.svg" alt="" class="brand-mark">{{ content.site.brand }}</a><p>© 2026 {{ content.site.brand }}. {{ content.site.footerText }}</p><div><a (click)="openAdmin()">Admin</a><a *ngFor="let link of content.site.socialLinks" [href]="link.url" target="_blank" rel="noreferrer">{{ link.label }}</a></div></footer>

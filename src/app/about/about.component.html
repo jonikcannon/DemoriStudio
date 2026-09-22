@@ -1,16 +1,22 @@
 <section id="about" class="about">
   <div class="about-image">
-    <img [src]="portraitImage"
-         alt="Jonik, photographer and drone pilot">
+    <img [src]="portraitImage" [alt]="portraitAlt">
   </div>
   <div class="about-copy">
-    <p class="eyebrow">BEHIND THE LENS</p>
-    <h2>Hi, I'm <em>Jonik.</em></h2>
-    <p>I'm a photographer and licensed drone pilot with a deep passion for capturing honest moments, striking light, and perspectives people do not usually get to see.</p>
-    <p>While I am newer in my professional photography journey, I bring an exceptional eye for composition, timing, and storytelling that helps each shoot feel intentional and emotionally true.</p>
-    <p>I also bring 15+ years of technology leadership across the full software development lifecycle, currently serving as an Application Delivery Manager, Senior QA Automation Engineer, and Team Lead.</p>
-    <p>That technical experience shapes how I approach creative work: strong preparation, repeatable quality, precision in post-processing, and a client experience built on clear communication and dependable delivery.</p>
-    <p>Whether I am shooting portraits, creating aerial content, or building brand-focused visuals, my goal is simple: create images that feel personal, polished, and memorable.</p>
-    <button class="underlined" (click)="onLearnMoreClick()">More about the studio <span>↗</span></button>
+    <p class="eyebrow">{{ content.eyebrow }}</p>
+    <h2>{{ content.heading }} <em *ngIf="content.headingEmphasis">{{ content.headingEmphasis }}</em></h2>
+    <p *ngFor="let paragraph of content.paragraphs">{{ paragraph }}</p>
+    <button class="underlined" (click)="onLearnMoreClick()">{{ content.ctaLabel }} <span>↗</span></button>
+  </div>
+</section>
+
+<section class="about-features" *ngIf="features.length">
+  <h3 class="about-features-heading">Highlights</h3>
+  <div class="about-features-grid">
+    <article class="about-feature" *ngFor="let feature of features">
+      <img *ngIf="featureImage(feature.image) as image" [src]="image" [alt]="feature.title" loading="lazy">
+      <h4>{{ feature.title }}</h4>
+      <p>{{ feature.description }}</p>
+    </article>
   </div>
 </section>

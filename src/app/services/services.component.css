@@ -4,7 +4,7 @@
 
 .services {
   padding: 92px 8vw;
-  background: #f4f2ec;
+  background: var(--color-background);
 }
 
 .section-head {
@@ -58,8 +58,8 @@
 }
 
 .service-tabs button.active {
-  color: #26362e;
-  border-bottom: 2px solid #26362e;
+  color: var(--color-primary);
+  border-bottom: 2px solid var(--color-primary);
   padding-bottom: 10px;
 }
 
@@ -157,6 +157,68 @@
   align-self: stretch;
 }
 
+/* Websites service: one live preview at a time, paged with the same ‹ N/M ›
+   control as the Aerial videos below, and sized to match so the two-column
+   layout doesn't shift when a visitor switches tabs. */
+.service-website-caption {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--color-background);
+  border: 1px solid #cdc8bd;
+  border-bottom: 0;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: bold;
+}
+
+.service-website-caption a {
+  color: inherit;
+  white-space: nowrap;
+}
+
+.service-website-frame {
+  position: relative;
+  height: clamp(280px, 42vw, 560px);
+  border: 1px solid #cdc8bd;
+  background: #fff;
+}
+
+.service-website-frame iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.service-website-shield {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 0 14px;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: bold;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, background-color 0.15s;
+}
+
+.service-website-shield:hover,
+.service-website-shield:focus-visible {
+  opacity: 1;
+  background: linear-gradient(transparent 55%, rgba(0, 0, 0, 0.55));
+}
+
 .service-media-cycle {
   margin-top: 10px;
   display: inline-flex;
@@ -179,8 +241,8 @@
 
 .service-media-nav {
   border: 1px solid #7f8479;
-  background: #f4f2ec;
-  color: #26362e;
+  background: var(--color-background);
+  color: var(--color-primary);
   width: 30px;
   height: 30px;
   line-height: 1;
@@ -244,7 +306,7 @@
   border-bottom: 1px solid #9da098;
   background: transparent;
   font: 15px Arial, Helvetica, sans-serif;
-  color: #26362e;
+  color: var(--color-primary);
   outline: none;
 }
 
@@ -262,10 +324,21 @@
   cursor: not-allowed;
 }
 
-.form-success {
-  color: #2f6a44;
-  font-size: 13px;
-  margin-top: 10px;
+.contact-success-banner {
+  margin: 0 0 28px;
+  padding: 14px 18px;
+  border: 1px solid #b9d3c1;
+  border-left: 4px solid #2f6a44;
+  border-radius: 8px;
+  background: #eaf3ed;
+  color: #234d34;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.contact-success-banner:focus-visible {
+  outline: 2px solid #2f6a44;
+  outline-offset: 2px;
 }
 
 .form-error {

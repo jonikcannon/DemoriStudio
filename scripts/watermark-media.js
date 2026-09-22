@@ -5,6 +5,8 @@
 //   node scripts/watermark-media.js --sample <n>  process n images only
 //   node scripts/watermark-media.js               process everything
 //   node scripts/watermark-media.js --out <dir>   write locally, touch nothing remote
+//   node scripts/watermark-media.js --restyle     re-stamp already-marked images in the
+//                                                 current WATERMARK_STYLE, from their masters
 //
 // For every gallery image this does two things, in this order:
 //
@@ -42,6 +44,7 @@ const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 
 const args = process.argv.slice(2);
 const dryRun = args.includes('--dry-run');
+const restyle = args.includes('--restyle');
 const outDir = args.includes('--out') ? args[args.indexOf('--out') + 1] : '';
 const sampleSize = args.includes('--sample') ? Number(args[args.indexOf('--sample') + 1]) || 1 : 0;
 
@@ -51,10 +54,13 @@ function toOriginalKey(galleryKey) {
 }
 
 // A single corner mark is the least intrusive option, but it is also the easiest
-// to crop away. WATERMARK_STYLE=tiled repeats the mark diagonally across the
-// frame, which cannot be cropped out without destroying the picture -- at the
-// cost of a busier portfolio image. Corner is the default.
-const WATERMARK_STYLE = String(process.env.WATERMARK_STYLE || 'corner').trim().toLowerCase();
+// to crop away -- and it gets cut off in the gallery's cropped tiles.
+//   stretch  one large mark centred and sized to span the full image width (default)
+//   tiled    repeats the mark diagonally across the frame -- busier, hardest to crop
+//   corner   discreet bottom-right mark
+const WATERMARK_STYLE = String(process.env.WATERMARK_STYLE || 'stretch').trim().toLowerCase();
+const STYLE_FLAG = 'watermark-style';
+const STRETCH_WIDTH_RATIO = 0.92;
 
 function buildTiledSvg(width, height, text, fontSize) {
   const stepX = Math.round(fontSize * 13);
@@ -70,12 +76,51 @@ function buildTiledSvg(width, height, text, fontSize) {
   return Buffer.from(`<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">${marks.join('')}</svg>`);
 }
 
+// The SVG renderer ignores textLength, so "spans the image" is done by rendering
+// the text once at a reference size, measuring it, and scaling the font to fit.
+const naturalWidthCache = new Map();
+async function measureTextWidth(text, refSize) {
+  const key = `${refSize}|${text}`;
+  if (naturalWidthCache.has(key)) return naturalWidthCache.get(key);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${refSize * text.length}" height="${refSize * 2}">
+    <text x="0" y="${refSize * 1.4}" font-family="Georgia, 'Times New Roman', serif" font-size="${refSize}"
+          letter-spacing="${(refSize * 0.12).toFixed(2)}" fill="#000">${text}</text></svg>`;
+  const { info } = await sharp(Buffer.from(svg)).trim().toBuffer({ resolveWithObject: true });
+  naturalWidthCache.set(key, info.width);
+  return info.width;
+}
+
+async function buildStretchSvg(width, height, text) {
+  const refSize = 200;
+  const natural = await measureTextWidth(text, refSize);
+  const fontSize = Math.max(14, Math.floor(refSize * (width * STRETCH_WIDTH_RATIO) / natural));
+  return Buffer.from(
+    `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+       <defs>
+         <filter id="s" x="-10%" y="-30%" width="120%" height="160%">
+           <feDropShadow dx="0" dy="${Math.max(1, Math.round(fontSize * 0.03))}"
+                         stdDeviation="${Math.max(1, Math.round(fontSize * 0.04))}"
+                         flood-color="#000" flood-opacity="0.4"/>
+         </filter>
+       </defs>
+       <text x="${width / 2}" y="${height / 2 + fontSize * 0.34}"
+             text-anchor="middle"
+             font-family="Georgia, 'Times New Roman', serif"
+             font-size="${fontSize}"
+             letter-spacing="${(fontSize * 0.12).toFixed(2)}"
+             fill="#ffffff" fill-opacity="0.34"
+             filter="url(#s)">${text}</text>
+     </svg>`
+  );
+}
+
 // Scaled to the image so a 6000px master and a 1200px one get a proportionate
 // mark rather than a stamp that is invisible on one and overwhelming on the other.
-function buildWatermarkSvg(width, height) {
+async function buildWatermarkSvg(width, height) {
   const fontSize = Math.max(14, Math.round(width * 0.028));
   const pad = Math.round(fontSize * 0.9);
   const text = WATERMARK_TEXT.replace(/[<>&]/g, '');
+  if (WATERMARK_STYLE === 'stretch') return buildStretchSvg(width, height, text);
   if (WATERMARK_STYLE === 'tiled') return buildTiledSvg(width, height, text, Math.max(12, Math.round(width * 0.022)));
   return Buffer.from(
     `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
@@ -112,7 +157,7 @@ async function watermarkBuffer(input) {
   const h = oriented.info.height;
 
   return sharp(oriented.data)
-    .composite([{ input: buildWatermarkSvg(w, h), top: 0, left: 0 }])
+    .composite([{ input: await buildWatermarkSvg(w, h), top: 0, left: 0 }])
     .jpeg({ quality: 92, mozjpeg: true })
     .toBuffer();
 }
@@ -147,8 +192,43 @@ async function main() {
     const originalKey = toOriginalKey(key);
     try {
       const head = await client.send(new HeadObjectCommand({ Bucket: r2Config.bucket, Key: key }));
-      if (head.Metadata && head.Metadata[WATERMARK_FLAG] === '1') {
+      const meta = head.Metadata || {};
+      const alreadyMarked = meta[WATERMARK_FLAG] === '1';
+      // Legacy stamps carry no style tag; they were all the corner mark.
+      const currentStyle = meta[STYLE_FLAG] || 'corner';
+      if (alreadyMarked && !(restyle && currentStyle !== WATERMARK_STYLE)) {
         skipped++;
+        continue;
+      }
+
+      if (alreadyMarked) {
+        // Restyle: the public copy already carries a mark, so it can never be the
+        // source -- stamping over it would double up. Rebuild from the master only.
+        let masterHead;
+        try {
+          masterHead = await client.send(new HeadObjectCommand({ Bucket: r2Config.bucket, Key: originalKey }));
+        } catch {
+          failed++;
+          console.error(`SKIPPED ${key}: no master at ${originalKey}, refusing to restamp a marked copy`);
+          continue;
+        }
+        if (dryRun) {
+          console.log(`would restyle ${key}  (${currentStyle} -> ${WATERMARK_STYLE}, from ${originalKey})`);
+          stamped++;
+          continue;
+        }
+        const master = await client.send(new GetObjectCommand({ Bucket: r2Config.bucket, Key: originalKey }));
+        const marked = await watermarkBuffer(await streamToBuffer(master.Body));
+        await client.send(new PutObjectCommand({
+          Bucket: r2Config.bucket,
+          Key: key,
+          Body: marked,
+          ContentType: 'image/jpeg',
+          Metadata: { [WATERMARK_FLAG]: '1', [STYLE_FLAG]: WATERMARK_STYLE },
+          CacheControl: 'public, max-age=604800'
+        }));
+        stamped++;
+        if (stamped % 10 === 0) console.log(`  ${stamped} restyled...`);
         continue;
       }
 
@@ -186,7 +266,7 @@ async function main() {
         Key: key,
         Body: marked,
         ContentType: 'image/jpeg',
-        Metadata: { [WATERMARK_FLAG]: '1' },
+        Metadata: { [WATERMARK_FLAG]: '1', [STYLE_FLAG]: WATERMARK_STYLE },
         CacheControl: 'public, max-age=604800'
       }));
       stamped++;
