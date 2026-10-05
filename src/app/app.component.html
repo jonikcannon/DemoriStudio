@@ -6,7 +6,6 @@
     <a *ngIf="content.navigation.booking.visible" [class.active]="activeSection === 'booking'" (click)="openBooking()">{{ content.navigation.booking.label }}</a>
     <a *ngIf="content.navigation.about.visible" [class.active]="activeSection === 'about'" (click)="activeSection = 'about'; menuOpen = false">{{ content.navigation.about.label }}</a>
   </nav>
-  <button class="admin-quick" type="button" (click)="adminOpen ? closeAdmin() : openAdmin()">{{ adminToken ? 'Manage products' : 'Admin login' }}</button>
   <button class="cart-quick" type="button" (click)="openCartView()">Cart <span>{{ activeCartCount }}</span></button>
   <button class="hamburger" (click)="menuOpen = !menuOpen">☰</button>
 </header>
@@ -91,9 +90,23 @@
     [holdMinutes]="bookingHoldMinutes"
     [serviceCatalog]="bookableServiceNames"
     [requestSubmitting]="bookingRequestSubmitting"
+    [waitlistSubmitting]="waitlistSubmitting"
+    [waitlistJoinedDate]="waitlistJoinedDate"
     (book)="onBookSlot($event)"
     (requestDate)="onRequestDate($event)"
+    (joinWaitlist)="onJoinWaitlist($event)"
     (enquire)="activeSection = 'contact'"></app-booking>
+
+  <app-booking-lookup
+    *ngIf="activeSection === 'booking'"
+    [loading]="bookingLookupLoading"
+    [error]="bookingLookupError"
+    [result]="bookingLookupResult"
+    [payBalanceSubmitting]="bookingLookupPayBalanceSubmitting"
+    [icsHref]="bookingLookupIcsHref"
+    (lookup)="onBookingLookup($event)"
+    (payBalance)="onBookingLookupPayBalance()"
+    (reset)="onBookingLookupReset()"></app-booking-lookup>
 
   <app-about *ngIf="activeSection === 'about'" [content]="content.about" (contactClick)="activeSection = 'contact'"></app-about>
 
@@ -337,10 +350,27 @@
                 <video *ngIf="item.mediaType === 'video'" [src]="item.image" muted preload="metadata"></video>
                 <b *ngIf="item.mediaType === 'video'" class="gallery-published-badge">Video</b>
               </div>
-              <div class="gallery-published-info">
-                <span>{{ item.title }} &middot; {{ formatMoney(item.price) }}</span>
-                <button type="button" class="underlined" (click)="onDeleteProduct(item)">Delete</button>
+              <div class="gallery-published-info" *ngIf="showsGalleryRename(item); else staticProductInfo">
+                <input class="gallery-published-title" [ngModel]="item.title" (ngModelChange)="onGalleryTitleInput(item, $event)" [ngModelOptions]="{ standalone: true }" maxlength="120" aria-label="Title">
+                <div class="gallery-published-meta">
+                  <span class="gallery-published-price">{{ formatMoney(item.price) }}</span>
+                  <div class="gallery-published-actions">
+                    <button type="button" class="underlined" [disabled]="!galleryTitleEdits[item.image] || galleryRenaming[item.image]" (click)="renameGalleryProduct(item)">{{ galleryRenaming[item.image] ? 'Saving…' : 'Rename' }}</button>
+                    <button type="button" class="underlined" (click)="onDeleteProduct(item)">Delete</button>
+                  </div>
+                </div>
               </div>
+              <ng-template #staticProductInfo>
+                <div class="gallery-published-info">
+                  <span class="gallery-published-static-title">{{ item.title }}</span>
+                  <div class="gallery-published-meta">
+                    <span class="gallery-published-price">{{ formatMoney(item.price) }}</span>
+                    <div class="gallery-published-actions">
+                      <button type="button" class="underlined" (click)="onDeleteProduct(item)">Delete</button>
+                    </div>
+                  </div>
+                </div>
+              </ng-template>
             </div>
           </div>
           <div class="gallery-published-pager" *ngIf="totalProductPages > 1">
@@ -460,6 +490,25 @@
           </ul>
         </div>
 
+        <p class="admin-inquiries-meta" *ngIf="!adminBookingLoading">Waitlist ({{ adminWaitlist.length }})</p>
+        <div class="admin-blocks" *ngIf="!adminBookingLoading && adminWaitlist.length">
+          <ul class="admin-block-list">
+            <li *ngFor="let entry of adminWaitlist">
+              <span class="admin-block-label">{{ entry.date }} &middot; {{ entry.name }}</span>
+              <span class="admin-block-reason">
+                <a [href]="'mailto:' + entry.email">{{ entry.email }}</a><span *ngIf="entry.phone"> &middot; {{ entry.phone }}</span>
+              </span>
+              <span class="admin-block-count" *ngIf="entry.notifiedAt">notified</span>
+              <button type="button" class="underlined" *ngIf="!entry.notifiedAt" [disabled]="waitlistNotifySubmittingDate === entry.date" (click)="notifyWaitlistForDate(entry.date)">
+                {{ waitlistNotifySubmittingDate === entry.date ? 'Notifying...' : 'Notify' }}
+              </button>
+              <button type="button" class="underlined" (click)="removeWaitlistEntry(entry)">Remove</button>
+            </li>
+          </ul>
+          <p class="admin-block-hint">"Notify" emails everyone not yet notified for that date -- send it once you've actually freed up the day.</p>
+        </div>
+        <p class="admin-inquiries-empty" *ngIf="!adminBookingLoading && !adminWaitlist.length">No one is waitlisted right now.</p>
+
         <p class="admin-inquiries-meta" *ngIf="!adminBookingLoading">Published sessions ({{ adminSlots.length }})</p>
         <div class="admin-inquiries-list" *ngIf="!adminBookingLoading && adminSlots.length">
           <article class="inquiry-card" *ngFor="let slot of adminSlots">
@@ -492,13 +541,15 @@
               <span *ngIf="booking.phone"> &middot; {{ booking.phone }}</span> &middot; {{ booking.service }}
             </p>
             <p class="inquiry-card-message">
-              Deposit {{ formatMoney(booking.deposit) }} paid &middot; balance {{ formatMoney(booking.balanceDue) }} due.
+              Deposit {{ formatMoney(booking.deposit) }} paid &middot; balance {{ booking.balancePaidAt ? (formatMoney(booking.balanceDue) + ' paid in full') : (formatMoney(booking.balanceDue) + ' due') }}.
+              <span *ngIf="booking.confirmationCode"> Code: {{ booking.confirmationCode }}.</span>
               <span *ngIf="booking.agreedTime">Moved to {{ booking.agreedTime }}.</span>
               <span *ngIf="booking.notes"> {{ booking.notes }}</span>
             </p>
             <div class="inquiry-card-foot" *ngIf="booking.status === 'confirmed'">
               <label>Agreed time<input type="text" [ngModel]="booking.agreedTime" (ngModelChange)="saveAgreedTime(booking, $event)" [name]="'agreed-' + booking.id" placeholder="07:30"></label>
               <span class="inquiry-delivery" [class.ok]="booking.refundable">{{ booking.refundable ? 'Refundable' : 'Past refund window' }}</span>
+              <button type="button" class="underlined" *ngIf="!booking.balancePaidAt" [disabled]="markingBalancePaidId === booking.id" (click)="markBalancePaid(booking)">{{ markingBalancePaidId === booking.id ? 'Saving…' : 'Mark balance paid' }}</button>
               <button type="button" class="underlined" (click)="cancelBooking(booking)">Cancel booking</button>
             </div>
           </article>

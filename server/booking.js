@@ -34,12 +34,25 @@ const slotsFile = path.join(bookingDir, 'slots.jsonl');
 const bookingsFile = path.join(bookingDir, 'bookings.jsonl');
 const blocksFile = path.join(bookingDir, 'blocks.jsonl');
 const unblocksFile = path.join(bookingDir, 'unblocks.jsonl');
+const waitlistFile = path.join(bookingDir, 'waitlist.jsonl');
 
 const SLOT = Object.freeze({ OPEN: 'open', HELD: 'held', BOOKED: 'booked', BLOCKED: 'blocked' });
 const BOOKING = Object.freeze({ PENDING: 'pending', CONFIRMED: 'confirmed', CANCELLED: 'cancelled', EXPIRED: 'expired' });
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+// Short, human-typeable code a customer can read off a confirmation email and
+// type back in on the booking-lookup page -- paired with their email address
+// so a code alone (8 chars, not a secret-strength token) can't be brute-forced
+// into someone else's booking. Excludes visually ambiguous characters
+// (0/O, 1/I/L) since it's meant to be read off a screen or printout by hand.
+const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+function generateConfirmationCode() {
+  let code = '';
+  for (let i = 0; i < 8; i += 1) code += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
+  return code;
+}
 
 // The studio publishes a day and its open hours; the server expands that into
 // the individual start times clients can actually book. Expanding at publish
@@ -198,10 +211,12 @@ const readSlots = () => readFile(slotsFile);
 const readBookings = () => readFile(bookingsFile);
 const readBlocks = () => readFile(blocksFile);
 const readUnblocks = () => readFile(unblocksFile);
+const readWaitlist = () => readFile(waitlistFile);
 const writeSlots = rows => writeFile(slotsFile, rows);
 const writeBookings = rows => writeFile(bookingsFile, rows);
 const writeBlocks = rows => writeFile(blocksFile, rows);
 const writeUnblocks = rows => writeFile(unblocksFile, rows);
+const writeWaitlist = rows => writeFile(waitlistFile, rows);
 
 function appendFileRow(file, row) {
   ensureStore();
@@ -256,6 +271,13 @@ function formatDateKey(d) {
 
 function weekdayOf(date) {
   return parseDateKey(date).getDay();
+}
+
+// Days between two YYYY-MM-DD calendar keys, local-time (see parseDateKey's
+// comment on why this is never done as a UTC millisecond subtraction).
+function daysBetween(fromDate, toDate) {
+  const ms = parseDateKey(toDate).getTime() - parseDateKey(fromDate).getTime();
+  return Math.round(ms / 86400000);
 }
 
 function blockLabel(block) {
@@ -803,6 +825,21 @@ function holdSlot(slotId, { name, email, phone = '', notes = '' }) {
     refundPolicy: refundPolicyText(),
     refundCutoffHours: refundCutoffHours(),
     orderId: '',
+    // Paired with email on the public booking-lookup form (see
+    // findBookingByConfirmation) so a customer can look up their own booking
+    // or pay the balance without an admin login.
+    confirmationCode: generateConfirmationCode(),
+    // Set once the balance is paid online (see balance-checkout in server.js).
+    // Cash/check/in-person payment is recorded by the admin instead -- see
+    // markBalancePaidManually.
+    balancePaidAt: '',
+    balanceOrderId: '',
+    // Idempotency markers for the scheduled reminder/review-request emails
+    // (see listBookingsNeedingBalanceReminder/listBookingsNeedingReviewRequest
+    // below and runScheduledBookingTasks in server.js) -- each must fire at
+    // most once per booking.
+    reminderSentAt: '',
+    reviewRequestSentAt: '',
     createdAt: now.toISOString(),
     updatedAt: now.toISOString(),
     confirmedAt: '',
@@ -896,6 +933,137 @@ function isRefundable(booking, now = Date.now()) {
   return now - bookedAt <= hours * 3600000;
 }
 
+// A customer's own lookup of their booking: requires both the confirmation
+// code AND the email on file, so an 8-character code alone (short enough to
+// occasionally guess) can't be used to pull up a stranger's booking. Matches
+// case-insensitively since codes are shown uppercase but customers may retype
+// them lowercase, and finds only the most recent non-cancelled booking for a
+// date/code pair (a re-booked slot could otherwise have more than one row).
+function findBookingByConfirmation(code, email) {
+  const wantedCode = String(code || '').trim().toUpperCase();
+  const wantedEmail = String(email || '').trim().toLowerCase();
+  if (!wantedCode || !wantedEmail) return null;
+  const matches = readBookings().filter(booking => (
+    String(booking.confirmationCode || '').toUpperCase() === wantedCode
+    && String(booking.email || '').toLowerCase() === wantedEmail
+  ));
+  if (!matches.length) return null;
+  return matches.sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)))[0];
+}
+
+// Idempotent: a webhook retry must not re-send the "balance paid" email.
+function markBalancePaid(bookingId, { orderId = '' } = {}) {
+  return updateBooking(bookingId, current => (
+    current.balancePaidAt ? current : { ...current, balancePaidAt: new Date().toISOString(), balanceOrderId: String(orderId || '') }
+  ));
+}
+
+// The admin's counterpart to markBalancePaid: a balance collected off-site
+// (cash, check, in person on the shoot day) still needs to clear the
+// "balance due" state on the booking.
+function markBalancePaidManually(bookingId) {
+  const booking = findBooking(bookingId);
+  if (!booking) return { error: 'Booking not found.', status: 404 };
+  if (booking.balancePaidAt) return { error: 'The balance is already marked paid.', status: 409 };
+  return { booking: markBalancePaid(bookingId, { orderId: 'manual' }) };
+}
+
+function markReminderSent(bookingId) {
+  return updateBooking(bookingId, current => ({ ...current, reminderSentAt: new Date().toISOString() }));
+}
+
+function markReviewRequestSent(bookingId) {
+  return updateBooking(bookingId, current => ({ ...current, reviewRequestSentAt: new Date().toISOString() }));
+}
+
+// Confirmed, unpaid-balance bookings whose session is within `daysBefore` days
+// (and not already past) and that have not already gotten a reminder -- see
+// runScheduledBookingTasks in server.js, which calls this on a timer and
+// marks each one sent via markReminderSent so it fires exactly once.
+function listBookingsNeedingBalanceReminder(daysBefore) {
+  const now = today();
+  return readBookings().filter(booking => (
+    booking.status === BOOKING.CONFIRMED
+    && !booking.balancePaidAt
+    && !booking.reminderSentAt
+    && !isPastDate(booking.date)
+    && daysBetween(now, booking.date) <= daysBefore
+  ));
+}
+
+// Confirmed bookings whose session date has passed by at least `daysAfter`
+// days and that have not already gotten a review request.
+function listBookingsNeedingReviewRequest(daysAfter) {
+  const now = today();
+  return readBookings().filter(booking => (
+    booking.status === BOOKING.CONFIRMED
+    && !booking.reviewRequestSentAt
+    && daysBetween(booking.date, now) >= daysAfter
+  ));
+}
+
+// Waitlist: a visitor's interest in a date with no open time, so the studio
+// can reach out by hand (or click "Notify" to email everyone on a date's
+// list at once) if something frees up. Deliberately simple -- no automatic
+// re-offer flow, since "the date opened up" can mean several different admin
+// actions (a cancellation, a removed block, an added unblock exception).
+function joinWaitlist({ date, name, email, phone = '', notes = '' }) {
+  const day = String(date || '').trim();
+  if (!DATE_PATTERN.test(day) || Number.isNaN(Date.parse(`${day}T00:00:00`))) {
+    return { error: 'Date must be a calendar date in YYYY-MM-DD form.' };
+  }
+  if (isPastDate(day)) return { error: 'That date is in the past.' };
+  const customerName = String(name || '').trim();
+  if (customerName.length < 2) return { error: 'Please enter your name.' };
+  const customerEmail = String(email || '').trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)) return { error: 'Please enter a valid email.' };
+
+  const now = new Date().toISOString();
+  return {
+    entry: appendFileRow(waitlistFile, {
+      id: randomUUID(),
+      date: day,
+      name: customerName,
+      email: customerEmail,
+      phone: String(phone || '').trim(),
+      notes: String(notes || '').trim().slice(0, 500),
+      createdAt: now,
+      notifiedAt: ''
+    })
+  };
+}
+
+function listWaitlist({ date = '' } = {}) {
+  const entries = readWaitlist().filter(entry => !isPastDate(entry.date));
+  return (date ? entries.filter(entry => entry.date === date) : entries)
+    .sort((left, right) => String(left.date).localeCompare(String(right.date)) || String(left.createdAt).localeCompare(String(right.createdAt)));
+}
+
+function removeWaitlistEntry(entryId) {
+  const entries = readWaitlist();
+  if (!entries.some(entry => entry.id === entryId)) return { error: 'Waitlist entry not found.', status: 404 };
+  writeWaitlist(entries.filter(entry => entry.id !== entryId));
+  return { ok: true };
+}
+
+// Marks specific waitlist entries as notified -- takes the ids the caller has
+// actually confirmed were emailed (see /api/admin/booking/waitlist/:date/notify
+// in server.js), rather than every entry for a date regardless of outcome.
+// A transient mailer failure must leave an entry retriable, not silently
+// marked as handled with no way to send it again short of hand-editing the
+// store.
+function markWaitlistNotified(entryIds) {
+  const ids = new Set(entryIds);
+  if (!ids.size) return [];
+  const now = new Date().toISOString();
+  const entries = readWaitlist();
+  const notified = entries.filter(entry => ids.has(entry.id) && !entry.notifiedAt);
+  writeWaitlist(entries.map(entry => (
+    ids.has(entry.id) && !entry.notifiedAt ? { ...entry, notifiedAt: now } : entry
+  )));
+  return notified;
+}
+
 module.exports = {
   SLOT,
   BOOKING,
@@ -904,6 +1072,7 @@ module.exports = {
   bookingsFile,
   blocksFile,
   unblocksFile,
+  waitlistFile,
   WEEKDAY_NAMES,
   ensureStore,
   depositFor,
@@ -946,5 +1115,17 @@ module.exports = {
   setAgreedTime,
   cancelBooking,
   deleteSlot,
-  isRefundable
+  isRefundable,
+  generateConfirmationCode,
+  findBookingByConfirmation,
+  markBalancePaid,
+  markBalancePaidManually,
+  markReminderSent,
+  markReviewRequestSent,
+  listBookingsNeedingBalanceReminder,
+  listBookingsNeedingReviewRequest,
+  joinWaitlist,
+  listWaitlist,
+  removeWaitlistEntry,
+  markWaitlistNotified
 };

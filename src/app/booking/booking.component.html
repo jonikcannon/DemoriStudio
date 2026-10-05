@@ -147,6 +147,53 @@
       </form>
     </div>
 
+    <!-- Always offered, not tied to a specific day: this calendar has no
+         "this day is taken" state to react to (see calendarDays), so a
+         visitor who can't find a date they want asks here instead. -->
+    <div class="booking-times booking-request booking-waitlist" *ngIf="!requestDateInput">
+      <button type="button" class="underlined" *ngIf="!waitlistOpen" (click)="openWaitlist()">Can't find a date that works? Join the waitlist</button>
+      <ng-container *ngIf="waitlistOpen">
+        <div class="booking-times-head">
+          <h3>Join the waitlist</h3>
+          <button type="button" class="underlined" (click)="cancelWaitlist()">Clear</button>
+        </div>
+        <ng-container *ngIf="waitlistJoinedDate && waitlistJoinedDate === waitlistForm.date; else waitlistFormTpl">
+          <p class="booking-times-hint">You're on the list for {{ formatDay(waitlistJoinedDate) }} -- we'll email you if it opens up.</p>
+        </ng-container>
+        <ng-template #waitlistFormTpl>
+          <p class="booking-times-hint">Tell us the date you want and we'll email you if it opens up.</p>
+          <form class="booking-form" (ngSubmit)="submitWaitlist()">
+            <label>
+              Date
+              <input type="date" name="waitlistDate" [(ngModel)]="waitlistForm.date" [min]="todayDateValue" required>
+            </label>
+            <label>
+              Name
+              <input type="text" name="waitlistName" [(ngModel)]="waitlistForm.name" required autocomplete="name">
+            </label>
+            <label>
+              Email
+              <input type="email" name="waitlistEmail" [(ngModel)]="waitlistForm.email" required autocomplete="email">
+            </label>
+            <label>
+              Phone <span class="optional">optional</span>
+              <input type="tel" name="waitlistPhone" [(ngModel)]="waitlistForm.phone" autocomplete="tel">
+            </label>
+            <label>
+              Anything we should know <span class="optional">optional</span>
+              <textarea name="waitlistNotes" [(ngModel)]="waitlistForm.notes"></textarea>
+            </label>
+            <div class="booking-actions">
+              <button type="submit" class="booking-pay" [disabled]="waitlistSubmitting">
+                {{ waitlistSubmitting ? 'Joining...' : 'Join the waitlist' }}
+              </button>
+              <button type="button" class="booking-back" (click)="cancelWaitlist()" [disabled]="waitlistSubmitting">Cancel</button>
+            </div>
+          </form>
+        </ng-template>
+      </ng-container>
+    </div>
+
     <div class="booking-groups" *ngIf="!selectedDateInput && dayGroups.length">
       <div class="booking-group">
         <h3>Open days</h3>

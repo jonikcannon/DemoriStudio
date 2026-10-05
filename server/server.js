@@ -28,7 +28,8 @@ if (!fs.existsSync(productsDir)) fs.mkdirSync(productsDir, { recursive: true });
 const { resolveMediaDir, CATEGORIES } = require('../scripts/media-dir');
 const {
   config: r2Config, isR2Configured, isCdnEnabled, createR2Client,
-  toObjectKey: toR2Key, toPublicUrl: toR2Url
+  toObjectKey: toR2Key, toPublicUrl: toR2Url,
+  DESCRIPTIONS_KEY, DESCRIPTIONS_FILE, getObjectText: getR2ObjectText
 } = require('../scripts/r2');
 const galleryDir = resolveMediaDir();
 if (!fs.existsSync(galleryDir)) fs.mkdirSync(galleryDir, { recursive: true });
@@ -39,6 +40,7 @@ const inquiriesLogFile = path.join(inquiriesDir, 'contact-inquiries.jsonl');
 const orderStore = require('./orders');
 const fulfilment = require('./fulfilment');
 const bookingStore = require('./booking');
+const ics = require('./ics');
 const siteContent = require('./content');
 orderStore.ensureStore();
 bookingStore.ensureStore();
@@ -206,6 +208,9 @@ async function sendBookingEmails(booking) {
         '',
         ...lines,
         '',
+        `Confirmation code: ${booking.confirmationCode}`,
+        `Look up your booking any time on the Booking page (${origin.replace(/\/$/, '')}) to pay the remaining balance or add it to your calendar.`,
+        '',
         `Reference: ${booking.id}`,
         '',
         booking.refundPolicy
@@ -236,6 +241,137 @@ async function sendBookingEmails(booking) {
   return Boolean(booking.email);
 }
 
+async function sendBalancePaidEmail(booking) {
+  const transporter = getMailer();
+  const from = String(process.env.CONTACT_FROM_EMAIL || process.env.SMTP_USER || '').trim();
+  const studio = String(process.env.CONTACT_TO_EMAIL || process.env.ADMIN_EMAIL || '').trim();
+  if (!transporter || !from || !booking.email) return false;
+
+  await transporter.sendMail({
+    from,
+    to: booking.email,
+    replyTo: studio || undefined,
+    subject: `Payment received -- your Demori Studio session (${booking.date})`,
+    text: [
+      `Thank you ${booking.name || ''}`.trim() + ',',
+      '',
+      `We've received your balance payment of ${formatMoney(booking.balanceDue)} for ${booking.date}.`,
+      'Your session is now paid in full. See you then!',
+      '',
+      `Reference: ${booking.id}`
+    ].join('\n')
+  });
+  return true;
+}
+
+// Sent once, a configurable number of days before the session, as a heads-up
+// -- NOT a payment deadline. The balance is normally due on the day (see
+// sendBookingEmails), so this only exists to remind a client the session is
+// coming up and that paying online in advance is an option if they'd rather
+// not handle it on the day. See runScheduledBookingTasks and
+// bookingStore.listBookingsNeedingBalanceReminder.
+async function sendBalanceReminderEmail(booking) {
+  const transporter = getMailer();
+  const from = String(process.env.CONTACT_FROM_EMAIL || process.env.SMTP_USER || '').trim();
+  const studio = String(process.env.CONTACT_TO_EMAIL || process.env.ADMIN_EMAIL || '').trim();
+  if (!transporter || !from || !booking.email) return false;
+
+  await transporter.sendMail({
+    from,
+    to: booking.email,
+    replyTo: studio || undefined,
+    subject: `Your session is coming up -- Demori Studio (${booking.date})`,
+    text: [
+      `Hi ${booking.name || ''}`.trim() + ',',
+      '',
+      `Your ${booking.service} session is coming up on ${booking.date}. The remaining balance of ${formatMoney(booking.balanceDue)} is due on the day -- card, cash, or you're welcome to pay it online any time before then.`,
+      '',
+      `Look up your booking to pay online or add it to your calendar: ${origin.replace(/\/$/, '')}`,
+      `Confirmation code: ${booking.confirmationCode || ''}`
+    ].join('\n')
+  });
+  return true;
+}
+
+// Sent once, a configurable number of days after the session, asking for a
+// review/testimonial. Best-effort only -- there is no unsubscribe mechanism
+// beyond the mailer's own list-unsubscribe handling, so keep this to a single
+// send per booking (see reviewRequestSentAt).
+async function sendReviewRequestEmail(booking) {
+  const transporter = getMailer();
+  const from = String(process.env.CONTACT_FROM_EMAIL || process.env.SMTP_USER || '').trim();
+  const studio = String(process.env.CONTACT_TO_EMAIL || process.env.ADMIN_EMAIL || '').trim();
+  if (!transporter || !from || !booking.email) return false;
+
+  await transporter.sendMail({
+    from,
+    to: booking.email,
+    replyTo: studio || undefined,
+    subject: 'How was your session with Demori Studio?',
+    text: [
+      `Hi ${booking.name || ''}`.trim() + ',',
+      '',
+      'Thank you again for booking a session with us. We would love to hear how it went --',
+      'reply to this email with a few words, and let us know if we can help with anything next time.',
+      '',
+      `Reference: ${booking.id}`
+    ].join('\n')
+  });
+  return true;
+}
+
+async function sendWaitlistNotifyEmail(entry) {
+  const transporter = getMailer();
+  const from = String(process.env.CONTACT_FROM_EMAIL || process.env.SMTP_USER || '').trim();
+  const studio = String(process.env.CONTACT_TO_EMAIL || process.env.ADMIN_EMAIL || '').trim();
+  if (!transporter || !from || !entry.email) return false;
+
+  await transporter.sendMail({
+    from,
+    to: entry.email,
+    replyTo: studio || undefined,
+    subject: `${entry.date} is open at Demori Studio`,
+    text: [
+      `Hi ${entry.name || ''}`.trim() + ',',
+      '',
+      `You asked to be notified if ${entry.date} opened up -- it's bookable again.`,
+      'Dates are first-come, first-served, so head to the Booking page to reserve a time if you would still like it.',
+      '',
+      origin.replace(/\/$/, '')
+    ].join('\n')
+  });
+  return true;
+}
+
+// Runs the balance-reminder and post-session review-request sweeps. Called
+// once at startup and then on an hourly timer (see the bottom of this file)
+// rather than a real cron dependency -- the process is already long-running
+// under PM2, so a periodic in-process check is enough and needs nothing
+// extra provisioned.
+async function runScheduledBookingTasks() {
+  const reminderDays = Number(process.env.BOOKING_BALANCE_REMINDER_DAYS);
+  const daysBefore = Number.isFinite(reminderDays) && reminderDays > 0 ? reminderDays : 3;
+  for (const booking of bookingStore.listBookingsNeedingBalanceReminder(daysBefore)) {
+    try {
+      const sent = await sendBalanceReminderEmail(booking);
+      if (sent) bookingStore.markReminderSent(booking.id);
+    } catch (error) {
+      console.error(`Balance reminder email failed for booking ${booking.id}:`, error?.message || error);
+    }
+  }
+
+  const reviewDays = Number(process.env.BOOKING_REVIEW_REQUEST_DAYS);
+  const daysAfter = Number.isFinite(reviewDays) && reviewDays >= 0 ? reviewDays : 2;
+  for (const booking of bookingStore.listBookingsNeedingReviewRequest(daysAfter)) {
+    try {
+      const sent = await sendReviewRequestEmail(booking);
+      if (sent) bookingStore.markReviewRequestSent(booking.id);
+    } catch (error) {
+      console.error(`Review request email failed for booking ${booking.id}:`, error?.message || error);
+    }
+  }
+}
+
 // Runs after payment. Split so a webhook retry can re-run only the part that
 // has not succeeded yet.
 async function fulfilOrder(order) {
@@ -255,6 +391,26 @@ async function fulfilOrder(order) {
         });
       } catch (error) {
         console.error('Booking confirmation email failed:', error?.message || error);
+        orderStore.setDelivery(current.id, { status: orderStore.FULFILMENT.FAILED, error: String(error?.message || error) });
+      }
+    }
+    return orderStore.findOrderById(current.id) || current;
+  }
+
+  if (current.kind === 'booking-balance') {
+    const bookingId = String(current.metadata?.bookingId || '');
+    // markBalancePaid is idempotent, so a webhook retry cannot double-mark it.
+    const paid = bookingStore.markBalancePaid(bookingId, { orderId: current.id });
+    if (paid && paid.balanceOrderId === current.id) {
+      try {
+        const sent = await sendBalancePaidEmail(paid);
+        orderStore.setDelivery(current.id, {
+          status: sent ? orderStore.FULFILMENT.FULFILLED : orderStore.FULFILMENT.FAILED,
+          sentAt: sent ? new Date().toISOString() : '',
+          error: sent ? '' : 'No mailer configured or no client email on the booking.'
+        });
+      } catch (error) {
+        console.error('Balance payment confirmation email failed:', error?.message || error);
         orderStore.setDelivery(current.id, { status: orderStore.FULFILMENT.FAILED, error: String(error?.message || error) });
       }
     }
@@ -543,6 +699,39 @@ async function moveGalleryObjectInR2(fromRelative, toRelative) {
     CopySource: `${r2Config.bucket}/${fromKey}`.split('/').map(encodeURIComponent).join('/')
   }));
   await r2Client.send(new DeleteObjectCommand({ Bucket: r2Config.bucket, Key: fromKey }));
+}
+
+// Human-written titles, keyed by `<category>/<file>` (see DESCRIPTIONS_KEY's
+// doc comment in scripts/r2.js). The bucket is the source of truth once
+// CDN-served: a restart or the next `npm run manifest` reads this file from
+// there, not local disk, so a title edit has to land there too or the next
+// deploy would silently revert it. Local disk is written as well so the
+// no-R2 fallback picks it up, and a read-after-write within this process
+// agrees either way.
+async function readGalleryDescriptions() {
+  if (r2Client && isR2Configured()) {
+    const body = await getR2ObjectText(r2Client, DESCRIPTIONS_KEY);
+    return body ? JSON.parse(body) : {};
+  }
+  const file = path.join(galleryDir, DESCRIPTIONS_FILE);
+  if (!fs.existsSync(file)) return {};
+  return JSON.parse(fs.readFileSync(file, 'utf8'));
+}
+
+async function writeGalleryDescriptions(descriptions) {
+  const sorted = Object.fromEntries(Object.keys(descriptions).sort().map(key => [key, descriptions[key]]));
+  const body = `${JSON.stringify(sorted, null, 2)}\n`;
+  if (r2Client && isR2Configured()) {
+    const { PutObjectCommand } = require('@aws-sdk/client-s3');
+    await r2Client.send(new PutObjectCommand({
+      Bucket: r2Config.bucket,
+      Key: DESCRIPTIONS_KEY,
+      Body: Buffer.from(body, 'utf8'),
+      ContentType: 'application/json'
+    }));
+  }
+  fs.mkdirSync(galleryDir, { recursive: true });
+  fs.writeFileSync(path.join(galleryDir, DESCRIPTIONS_FILE), body, 'utf8');
 }
 
 // Category folders on disk are the authoring view, but a host that serves
@@ -1167,6 +1356,13 @@ app.patch('/api/admin/gallery/category', auth, async (req, res) => {
 
   const sourcePath = path.join(galleryDir, currentFolder, fileName);
   const destinationPath = path.join(galleryDir, targetFolder, fileName);
+  // fileName/currentFolder come from the client; without this, a "../.."
+  // segment in the image path would let path.join resolve outside galleryDir
+  // entirely, turning this into an arbitrary file move on disk.
+  const galleryRoot = path.resolve(galleryDir) + path.sep;
+  if (!path.resolve(sourcePath).startsWith(galleryRoot) || !path.resolve(destinationPath).startsWith(galleryRoot)) {
+    return res.status(400).json({ error: 'Image path is invalid.' });
+  }
   const nextImage = `assets/gallery/${targetFolder}/${encodeURIComponent(fileName)}`;
 
   // The bucket is what serves the gallery, so a host without the photos on
@@ -1245,6 +1441,50 @@ app.patch('/api/admin/gallery/category', auth, async (req, res) => {
     absoluteImage: isCdnEnabled() ? nextPublicImage : toAbsoluteImage(nextImage),
     category: targetFolder.charAt(0).toUpperCase() + targetFolder.slice(1)
   });
+});
+
+// Renames a gallery-derived product's display title from the admin "Published
+// products" grid. Scoped to assets/gallery/ images only -- a product with a
+// real backing record (checkoutEnabled) is edited through the catalog page's
+// full edit form instead, which does not call this route.
+app.patch('/api/admin/gallery/title', auth, async (req, res) => {
+  const image = toGalleryRelativeImage(req.body?.image);
+  const title = String(req.body?.title || '').trim();
+  if (!image || !title) return res.status(400).json({ error: 'Image and title are required.' });
+  if (title.length > 120) return res.status(400).json({ error: 'Title must be 120 characters or fewer.' });
+  if (!image.startsWith('assets/gallery/')) return res.status(400).json({ error: 'Only gallery images can be renamed.' });
+
+  const parts = image.split('/');
+  if (parts.length < 4) return res.status(400).json({ error: 'Image path is invalid.' });
+  const category = String(parts[2] || '').toLowerCase();
+  const fileName = decodeURIComponent(parts.slice(3).join('/'));
+  if (!fileName) return res.status(400).json({ error: 'Image path is invalid.' });
+
+  try {
+    const descriptions = await readGalleryDescriptions();
+    const key = `${category}/${fileName}`;
+    descriptions[key] = { ...descriptions[key], title };
+    await writeGalleryDescriptions(descriptions);
+
+    if (fs.existsSync(galleryManifestPath)) {
+      try {
+        const manifest = JSON.parse(fs.readFileSync(galleryManifestPath, 'utf8'));
+        if (Array.isArray(manifest)) {
+          const updated = manifest.map(item => (
+            toGalleryRelativeImage(item?.image) === image ? { ...item, title } : item
+          ));
+          fs.writeFileSync(galleryManifestPath, `${JSON.stringify(updated, null, 2)}\n`, 'utf8');
+        }
+      } catch (error) {
+        console.error('Failed to update gallery manifest after rename:', error);
+      }
+    }
+
+    return res.json({ ok: true, title });
+  } catch (error) {
+    console.error('Gallery rename failed:', error);
+    return res.status(500).json({ error: 'Could not rename this item.' });
+  }
 });
 
 app.post('/api/contact', rateLimit({ windowMs: 900000, max: 30, message: { error: 'Too many inquiries. Please try again shortly.' } }), async (req, res) => {
@@ -1553,6 +1793,144 @@ app.post('/api/booking/request-hold', rateLimit({ windowMs: 900000, max: 20, mes
   res.json(result.body);
 });
 
+// The shape a customer's own lookup is allowed to see: no internal fields
+// (slotId, orderId, refundCutoffHours, notes) beyond what they need to check
+// status, pay the balance, or add the session to their calendar.
+function publicBookingView(booking) {
+  return {
+    id: booking.id,
+    confirmationCode: booking.confirmationCode,
+    service: booking.service,
+    date: booking.date,
+    startTime: booking.startTime || '',
+    endTime: booking.endTime || '',
+    agreedTime: booking.agreedTime || '',
+    status: booking.status,
+    name: booking.name,
+    email: booking.email,
+    location: booking.location || '',
+    sessionFee: booking.sessionFee,
+    deposit: booking.deposit,
+    balanceDue: booking.balanceDue,
+    balancePaid: Boolean(booking.balancePaidAt),
+    refundPolicy: booking.refundPolicy,
+    refundable: bookingStore.isRefundable(booking)
+  };
+}
+
+app.post('/api/bookings/lookup', rateLimit({ windowMs: 900000, max: 20, message: { error: 'Too many lookup attempts. Please try again shortly.' } }), (req, res) => {
+  const booking = bookingStore.findBookingByConfirmation(req.body?.confirmationCode, req.body?.email);
+  if (!booking) return res.status(404).json({ error: 'No booking found for that email and confirmation code.' });
+  res.json({ booking: publicBookingView(booking) });
+});
+
+// Re-verifies the code+email pair rather than trusting the booking id alone
+// (an unguessable UUID, but this keeps every public booking action gated the
+// same way instead of some routes trusting the id by itself). Reads from
+// either the body (POST) or the query string (GET, e.g. the .ics download).
+function requireBookingMatch(req, res) {
+  const booking = bookingStore.findBookingByConfirmation(
+    req.body?.confirmationCode || req.query?.confirmationCode,
+    req.body?.email || req.query?.email
+  );
+  if (!booking || booking.id !== String(req.params.id || '')) {
+    res.status(404).json({ error: 'No booking found for that email and confirmation code.' });
+    return null;
+  }
+  return booking;
+}
+
+app.get('/api/bookings/:id/calendar.ics', (req, res) => {
+  const booking = requireBookingMatch(req, res);
+  if (!booking) return;
+  res.set('Content-Type', 'text/calendar; charset=utf-8');
+  res.set('Content-Disposition', `attachment; filename="demori-studio-${booking.date}.ics"`);
+  res.send(ics.buildCalendar([booking], { calendarName: `Demori Studio -- ${booking.date}` }));
+});
+
+// Pays the remaining balance online by card. Only available once the deposit
+// is confirmed and the balance is not already paid (online, or by the admin
+// marking an off-site payment).
+app.post('/api/bookings/:id/balance-checkout', rateLimit({ windowMs: 900000, max: 20, message: { error: 'Too many attempts. Please try again shortly.' } }), async (req, res) => {
+  const booking = requireBookingMatch(req, res);
+  if (!booking) return;
+  if (booking.status !== bookingStore.BOOKING.CONFIRMED) return res.status(409).json({ error: 'This booking has no confirmed deposit yet.' });
+  if (booking.balancePaidAt) return res.status(409).json({ error: 'The balance has already been paid.' });
+  if (!stripe) return res.status(503).json({ error: 'Stripe is not configured yet.' });
+
+  const order = orderStore.createPendingOrder({
+    kind: 'booking-balance',
+    email: booking.email,
+    items: [{
+      productId: '',
+      sku: `BOOKING-BALANCE-${booking.date}`,
+      title: `${booking.service} session balance (${booking.date})`,
+      mediaType: 'image',
+      imageKey: '',
+      quantity: 1,
+      unitAmount: booking.balanceDue,
+      orderType: 'booking-balance',
+      isPrint: false,
+      printSize: '',
+      printUnitPrice: 0,
+      deliverDigital: false,
+      downloads: 0
+    }],
+    metadata: { bookingId: booking.id }
+  });
+
+  let session;
+  try {
+    session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      payment_method_types: ['card'],
+      line_items: [{
+        quantity: 1,
+        price_data: {
+          currency: 'usd',
+          unit_amount: booking.balanceDue,
+          product_data: {
+            name: `${booking.service} session balance`,
+            description: `Remaining session fee balance for ${booking.date}.`
+          }
+        }
+      }],
+      metadata: { orderId: order.id, bookingId: booking.id },
+      client_reference_id: order.id,
+      customer_email: booking.email,
+      success_url: `${origin}/?booking=balance-paid`,
+      cancel_url: `${origin}/?booking=balance-cancel`
+    });
+  } catch (error) {
+    console.error('Stripe balance checkout failed:', error?.message || error);
+    return res.status(502).json({ error: 'Could not start checkout. Please try again.' });
+  }
+
+  orderStore.attachSession(order.id, session.id);
+  res.json({ url: session.url });
+});
+
+app.post('/api/admin/bookings/:id/balance/mark-paid', auth, (req, res) => {
+  const result = bookingStore.markBalancePaidManually(String(req.params.id || ''));
+  if (result.error) return res.status(result.status || 400).json({ error: result.error });
+  res.json({ booking: result.booking });
+});
+
+// Interest in a date with no open time -- see bookingStore.joinWaitlist.
+// Public and unauthenticated, rate-limited like the other booking-form
+// endpoints.
+app.post('/api/booking/waitlist', rateLimit({ windowMs: 900000, max: 20, message: { error: 'Too many attempts. Please try again shortly.' } }), (req, res) => {
+  const result = bookingStore.joinWaitlist({
+    date: req.body?.date,
+    name: req.body?.name,
+    email: req.body?.email,
+    phone: req.body?.phone,
+    notes: req.body?.notes
+  });
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.status(201).json({ ok: true });
+});
+
 app.get('/api/admin/bookings', auth, (req, res) => {
   bookingStore.releaseExpiredHolds();
   const status = String(req.query.status || '').trim();
@@ -1708,6 +2086,39 @@ app.delete('/api/admin/booking/blocks/:id', auth, (req, res) => {
   const removed = bookingStore.deleteBlock(String(req.params.id || ''));
   if (removed.error) return res.status(removed.status || 400).json({ error: removed.error });
   res.json({ ok: true });
+});
+
+app.get('/api/admin/booking/waitlist', auth, (req, res) => {
+  res.json({ entries: bookingStore.listWaitlist({ date: String(req.query.date || '').trim() }) });
+});
+
+app.delete('/api/admin/booking/waitlist/:id', auth, (req, res) => {
+  const removed = bookingStore.removeWaitlistEntry(String(req.params.id || ''));
+  if (removed.error) return res.status(removed.status || 400).json({ error: removed.error });
+  res.json({ ok: true });
+});
+
+// Emails everyone currently waiting on a date, then marks them notified --
+// meant for after the admin frees the day up (removes a block, adds an
+// unblock exception, or cancels the booking that was sitting on it).
+app.post('/api/admin/booking/waitlist/:date/notify', auth, async (req, res) => {
+  const date = String(req.params.date || '').trim();
+  const entries = bookingStore.listWaitlist({ date }).filter(entry => !entry.notifiedAt);
+  if (!entries.length) return res.json({ notified: 0, attempted: 0 });
+
+  // Only entries actually emailed successfully are marked notified -- a
+  // mailer outage must leave the rest retriable by clicking Notify again,
+  // not silently mark them handled with no way to send it a second time.
+  const succeededIds = [];
+  for (const entry of entries) {
+    try {
+      if (await sendWaitlistNotifyEmail(entry)) succeededIds.push(entry.id);
+    } catch (error) {
+      console.error('Waitlist notify email failed:', error?.message || error);
+    }
+  }
+  bookingStore.markWaitlistNotified(succeededIds);
+  res.json({ notified: succeededIds.length, attempted: entries.length });
 });
 
 // Records the start time once studio and client have agreed it.
@@ -1931,3 +2342,7 @@ console.log(isCdnEnabled()
 initializeMediaStorage().catch((error) => {
   console.error('Media storage init failed; continuing in local filesystem mode.', error.message || error);
 });
+
+// Delayed so it runs after startup settles (mailer init, etc.), then hourly.
+setTimeout(() => { runScheduledBookingTasks().catch(error => console.error('Scheduled booking tasks failed:', error?.message || error)); }, 15000);
+setInterval(() => { runScheduledBookingTasks().catch(error => console.error('Scheduled booking tasks failed:', error?.message || error)); }, 3600000);

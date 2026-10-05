@@ -66,9 +66,15 @@ export class BookingComponent {
   // visitor might ask for.
   @Input() serviceCatalog: string[] = [];
   @Input() requestSubmitting = false;
+  // Set by the parent once a waitlist join actually succeeds, so this
+  // component can show a confirmation for that specific date rather than
+  // trusting its own optimistic state (the request could still fail).
+  @Input() waitlistSubmitting = false;
+  @Input() waitlistJoinedDate = '';
   @Output() book = new EventEmitter<BookingRequest>();
   @Output() enquire = new EventEmitter<void>();
   @Output() requestDate = new EventEmitter<BookingDateRequest>();
+  @Output() joinWaitlist = new EventEmitter<{ date: string; name: string; email: string; phone: string; notes: string }>();
 
   selectedSlotId = '';
   selectedDateInput = '';
@@ -79,6 +85,14 @@ export class BookingComponent {
 
   requestDateInput = '';
   requestForm = { service: '', startTime: '', name: '', email: '', phone: '', notes: '' };
+
+  // Not tied to a specific calendar day the way the request/book forms are:
+  // this calendar has no concept of "this day is taken" (see calendarDays'
+  // comment -- a day is only ever available, requestable, or disabled), so
+  // the waitlist is offered as a standalone form instead of auto-triggered
+  // off a day click.
+  waitlistOpen = false;
+  waitlistForm = { date: '', name: '', email: '', phone: '', notes: '' };
 
   // Nothing published anywhere -- not just nothing matching the current
   // service filter. Drives whether the calendar lets a visitor request a date
@@ -309,6 +323,42 @@ export class BookingComponent {
       email,
       phone: this.requestForm.phone.trim(),
       notes: this.requestForm.notes.trim()
+    });
+  }
+
+  openWaitlist() {
+    this.waitlistOpen = true;
+  }
+
+  cancelWaitlist() {
+    this.waitlistOpen = false;
+    this.waitlistForm = { date: '', name: '', email: '', phone: '', notes: '' };
+  }
+
+  submitWaitlist() {
+    if (this.waitlistSubmitting) return;
+    const date = this.waitlistForm.date.trim();
+    const name = this.waitlistForm.name.trim();
+    const email = this.waitlistForm.email.trim();
+    if (!date) {
+      this.formError = 'Please choose a date.';
+      return;
+    }
+    if (name.length < 2) {
+      this.formError = 'Please enter your name.';
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      this.formError = 'Please enter a valid email address.';
+      return;
+    }
+    this.formError = '';
+    this.joinWaitlist.emit({
+      date,
+      name,
+      email,
+      phone: this.waitlistForm.phone.trim(),
+      notes: this.waitlistForm.notes.trim()
     });
   }
 

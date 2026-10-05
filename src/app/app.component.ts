@@ -7,6 +7,7 @@ import { Service, ServicesComponent } from './services/services.component';
 import { AboutComponent } from './about/about.component';
 import { Product, ProductEditPayload, ProductOrderPayload, ProductsComponent } from './products/products.component';
 import { BookingComponent, BookingDateRequest, BookingRequest, BookingSlot } from './booking/booking.component';
+import { BookingLookupComponent, BookingLookupResult } from './booking-lookup/booking-lookup.component';
 import { CartComponent, CartItem } from './cart/cart.component';
 import { getApiBaseUrl, mediaUrl } from './media-url';
 import { defaultSiteContent, NavKey, SiteContent, SiteSection } from './site-content';
@@ -30,7 +31,7 @@ type Inquiry = {
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, FormsModule, WorkComponent, GalleryComponent, ServicesComponent, AboutComponent, ProductsComponent, CartComponent, BookingComponent],
+  imports: [CommonModule, FormsModule, WorkComponent, GalleryComponent, ServicesComponent, AboutComponent, ProductsComponent, CartComponent, BookingComponent, BookingLookupComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.css'
 })
@@ -289,10 +290,29 @@ export class AppComponent implements OnInit {
   bookingPolicy = '';
   bookingHoldMinutes = 15;
   bookingRequestSubmitting = false;
+  waitlistSubmitting = false;
+  waitlistJoinedDate = '';
   // Kept in sync BY HAND with SERVICE_STARTING_PRICES in server/booking.js.
   // Digital prints is a mail-order product with no date/session, so it is not
   // offered when requesting a day to reserve with a deposit.
   readonly bookableServiceNames = ['Spaces', 'Aerial', 'Portraits'];
+
+  // Self-service booking lookup (confirmation code + email), independent of
+  // the booking-creation flow above. credentials are kept after a successful
+  // lookup so a later action (pay balance, .ics download) can be re-verified
+  // against them server-side without asking the visitor to retype anything --
+  // see requireBookingMatch in server.js.
+  bookingLookupLoading = false;
+  bookingLookupError = '';
+  bookingLookupResult: BookingLookupResult | null = null;
+  bookingLookupPayBalanceSubmitting = false;
+  private bookingLookupCredentials: { email: string; confirmationCode: string } | null = null;
+
+  get bookingLookupIcsHref(): string {
+    if (!this.bookingLookupResult || !this.bookingLookupCredentials) return '';
+    const params = new URLSearchParams(this.bookingLookupCredentials);
+    return `${this.api}/bookings/${encodeURIComponent(this.bookingLookupResult.id)}/calendar.ics?${params.toString()}`;
+  }
   adminBookings: any[] = [];
   adminSlots: any[] = [];
   adminBookingError = '';
@@ -317,6 +337,8 @@ export class AppComponent implements OnInit {
   adminBookingNotice = '';
   adminBlocks: any[] = [];
   adminUnblocks: any[] = [];
+  adminWaitlist: any[] = [];
+  waitlistNotifySubmittingDate = '';
   // A one-off exception to a recurring block: free a whole day (empty time) or a
   // single session so it can be published and booked. endDate, when set, turns
   // this into a bulk unblock across every day in [date, endDate] -- startTime
@@ -405,7 +427,8 @@ export class AppComponent implements OnInit {
   private async handleBookingCheckoutReturn() {
     const params = new URLSearchParams(window.location.search);
     const status = params.get('booking');
-    if (status !== 'success' && status !== 'cancel') return;
+    const knownStatuses = ['success', 'cancel', 'balance-paid', 'balance-cancel'];
+    if (!status || !knownStatuses.includes(status)) return;
 
     // Strip the param immediately so a refresh cannot re-show the notice or
     // re-run this branch.
@@ -419,11 +442,18 @@ export class AppComponent implements OnInit {
         'Payment received -- your deposit is confirmed and the date is reserved. We will be in touch to confirm the details.',
         'Booking confirmed'
       );
-    } else {
+    } else if (status === 'cancel') {
       await this.showNotice(
         'Checkout was cancelled. Your hold may still be active for a few more minutes if you want to try again.',
         'Checkout cancelled'
       );
+    } else if (status === 'balance-paid') {
+      await this.showNotice(
+        'Payment received -- your balance is now paid in full. Look up your booking below if you would like a receipt.',
+        'Balance paid'
+      );
+    } else {
+      await this.showNotice('Checkout was cancelled. Your balance is still due.', 'Checkout cancelled');
     }
   }
   private async loadContent() {
@@ -1084,6 +1114,60 @@ export class AppComponent implements OnInit {
     void this.loadBookingSlots();
   }
 
+  async onBookingLookup({ email, confirmationCode }: { email: string; confirmationCode: string }) {
+    this.bookingLookupLoading = true;
+    this.bookingLookupError = '';
+    try {
+      const response = await fetch(`${this.api}/bookings/lookup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, confirmationCode })
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        this.bookingLookupError = body.error || 'Could not find that booking.';
+        this.bookingLookupResult = null;
+        this.bookingLookupCredentials = null;
+        return;
+      }
+      this.bookingLookupResult = body.booking as BookingLookupResult;
+      this.bookingLookupCredentials = { email, confirmationCode };
+    } catch {
+      this.bookingLookupError = 'Network error while looking up your booking.';
+    } finally {
+      this.bookingLookupLoading = false;
+    }
+  }
+
+  onBookingLookupReset() {
+    this.bookingLookupResult = null;
+    this.bookingLookupCredentials = null;
+    this.bookingLookupError = '';
+  }
+
+  async onBookingLookupPayBalance() {
+    if (!this.bookingLookupResult || !this.bookingLookupCredentials || this.bookingLookupPayBalanceSubmitting) return;
+    this.bookingLookupPayBalanceSubmitting = true;
+    this.bookingLookupError = '';
+    try {
+      const response = await fetch(`${this.api}/bookings/${encodeURIComponent(this.bookingLookupResult.id)}/balance-checkout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(this.bookingLookupCredentials)
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        this.bookingLookupError = body.error || 'Could not start checkout.';
+        return;
+      }
+      window.location.href = body.url;
+    } catch {
+      this.bookingLookupError = 'Network error while starting checkout.';
+    } finally {
+      this.bookingLookupPayBalanceSubmitting = false;
+    }
+  }
+
   private async loadBookingSlots() {
     this.bookingLoading = true;
     this.bookingError = '';
@@ -1161,23 +1245,86 @@ export class AppComponent implements OnInit {
     }
   }
 
+  async onJoinWaitlist(request: { date: string; name: string; email: string; phone: string; notes: string }) {
+    if (this.waitlistSubmitting) return;
+    this.waitlistSubmitting = true;
+    this.bookingError = '';
+    try {
+      const response = await fetch(`${this.api}/booking/waitlist`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request)
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        this.bookingError = String(body?.error || 'Could not join the waitlist. Please try again.');
+        return;
+      }
+      this.waitlistJoinedDate = request.date;
+    } catch (error) {
+      console.error('Waitlist join failed.', error);
+      this.bookingError = 'Could not reach the booking service. Please try again.';
+    } finally {
+      this.waitlistSubmitting = false;
+    }
+  }
+
+  async notifyWaitlistForDate(date: string) {
+    if (this.waitlistNotifySubmittingDate) return;
+    this.waitlistNotifySubmittingDate = date;
+    try {
+      const response = await fetch(`${this.api}/admin/booking/waitlist/${encodeURIComponent(date)}/notify`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${this.adminToken}` }
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        this.adminBookingError = body.error || 'Could not notify the waitlist.';
+        return;
+      }
+      await this.loadAdminBookings();
+      // attempted > notified means at least one email failed (the mailer is
+      // down, say) and that entry is still sitting there un-notified,
+      // retriable by clicking Notify again -- tell the admin so a silent
+      // partial failure isn't mistaken for a clean send.
+      if (body.notified < body.attempted) {
+        await this.showNotice(
+          `Notified ${body.notified} of ${body.attempted}. The rest failed to send -- click Notify again once the issue is fixed.`,
+          'Some notifications failed'
+        );
+      }
+    } finally {
+      this.waitlistNotifySubmittingDate = '';
+    }
+  }
+
+  async removeWaitlistEntry(entry: any) {
+    const response = await fetch(`${this.api}/admin/booking/waitlist/${encodeURIComponent(entry.id)}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${this.adminToken}` }
+    });
+    if (response.ok) await this.loadAdminBookings();
+  }
+
   private async loadAdminBookings() {
     if (!this.adminToken) return;
     this.adminBookingLoading = true;
     this.adminBookingError = '';
     try {
       const headers = { Authorization: `Bearer ${this.adminToken}` };
-      const [bookingsRes, slotsRes, blocksRes, unblocksRes] = await Promise.all([
+      const [bookingsRes, slotsRes, blocksRes, unblocksRes, waitlistRes] = await Promise.all([
         fetch(`${this.api}/admin/bookings`, { headers }),
         fetch(`${this.api}/admin/booking/slots`, { headers }),
         fetch(`${this.api}/admin/booking/blocks`, { headers }),
-        fetch(`${this.api}/admin/booking/unblocks`, { headers })
+        fetch(`${this.api}/admin/booking/unblocks`, { headers }),
+        fetch(`${this.api}/admin/booking/waitlist`, { headers })
       ]);
-      if (!bookingsRes.ok || !slotsRes.ok || !blocksRes.ok || !unblocksRes.ok) throw new Error('Booking data unavailable');
+      if (!bookingsRes.ok || !slotsRes.ok || !blocksRes.ok || !unblocksRes.ok || !waitlistRes.ok) throw new Error('Booking data unavailable');
       this.adminBookings = (await bookingsRes.json())?.bookings || [];
       this.adminSlots = (await slotsRes.json())?.slots || [];
       this.adminBlocks = (await blocksRes.json())?.blocks || [];
       this.adminUnblocks = (await unblocksRes.json())?.unblocks || [];
+      this.adminWaitlist = (await waitlistRes.json())?.entries || [];
     } catch (error) {
       console.error('Admin booking data could not be loaded.', error);
       this.adminBookingError = 'Could not load bookings.';
@@ -1441,6 +1588,27 @@ export class AppComponent implements OnInit {
     }
     await this.loadAdminBookings();
     this.bookingSlots = [];
+  }
+
+  markingBalancePaidId = '';
+  async markBalancePaid(booking: any) {
+    if (this.markingBalancePaidId) return;
+    if (!await this.requestConfirmation(`Mark the balance for ${booking.name}'s booking on ${booking.date} as paid? Use this for cash, check, or in-person payment -- online payments are marked automatically.`, 'Mark balance paid')) return;
+    this.markingBalancePaidId = booking.id;
+    try {
+      const response = await fetch(`${this.api}/admin/bookings/${encodeURIComponent(booking.id)}/balance/mark-paid`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${this.adminToken}` }
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        this.adminBookingError = body.error || 'Could not mark the balance paid.';
+        return;
+      }
+      await this.loadAdminBookings();
+    } finally {
+      this.markingBalancePaidId = '';
+    }
   }
 
   formatMoney(cents: number): string {
@@ -1809,6 +1977,54 @@ export class AppComponent implements OnInit {
       await this.showNotice('Network error while deleting product.', 'Delete failed');
     }
   }
+  // Inline rename row in the admin "Published products" grid, for
+  // gallery-derived items only (see showsGalleryRename). Separate from the
+  // fuller edit form on the catalog page (onSaveProductEdits), and persists
+  // server-side via /api/admin/gallery/title rather than only to localStorage.
+  galleryTitleEdits: Record<string, string> = {};
+  galleryRenaming: Record<string, boolean> = {};
+
+  showsGalleryRename(item: Product) {
+    return !item.checkoutEnabled;
+  }
+
+  onGalleryTitleInput(item: Product, value: string) {
+    if (value === item.title) delete this.galleryTitleEdits[item.image];
+    else this.galleryTitleEdits[item.image] = value;
+  }
+
+  async renameGalleryProduct(item: Product) {
+    if (!this.canManageProducts) {
+      await this.showNotice('Only the Google admin account can rename items.', 'Admin required');
+      return;
+    }
+    const title = (this.galleryTitleEdits[item.image] || '').trim();
+    if (!title || title === item.title) return;
+    this.galleryRenaming[item.image] = true;
+    try {
+      const response = await fetch(`${this.api}/admin/gallery/title`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.adminToken}` },
+        body: JSON.stringify({ image: item.image, title })
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        await this.showNotice(body.error || 'Could not rename this item.', 'Rename failed');
+        return;
+      }
+      const imageKey = this.getProductImageKey(item.image);
+      this.gallery = this.gallery.map(entry => (
+        this.getProductImageKey(entry.image) === imageKey ? { ...entry, title } : entry
+      ));
+      delete this.galleryTitleEdits[item.image];
+      this.rebuildProducts();
+    } catch {
+      await this.showNotice('Network error while renaming.', 'Rename failed');
+    } finally {
+      this.galleryRenaming[item.image] = false;
+    }
+  }
+
   async onSaveProductEdits(edit: ProductEditPayload) {
     if (!this.canManageProducts) {
       await this.showNotice('Only the Google admin account can edit product details.', 'Admin required');
