@@ -426,3 +426,84 @@
     font-size: 33px;
   }
 }
+
+/* Apps service: a published app -- icon and name, a row of phone
+   screenshots, and the store link -- in the media panel. */
+.featured-app {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+  border: 1px solid #cdc8bd;
+  background: #fff;
+  padding: 18px;
+}
+
+.featured-app-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.service-media .featured-app-icon {
+  width: 56px;
+  height: 56px;
+  border: 0;
+  border-radius: 14px;
+  flex: none;
+}
+
+.featured-app-head b {
+  display: block;
+  font-family: Georgia, serif;
+  font-size: 22px;
+  font-weight: 400;
+}
+
+.featured-app-head small {
+  display: block;
+  margin-top: 3px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #676961;
+}
+
+.featured-app-screens {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 18px 0 16px;
+}
+
+.service-media .featured-app-screens img {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 415 / 900;
+  object-fit: cover;
+  border: 1px solid #e0dccf;
+  border-radius: 10px;
+}
+
+.featured-app-store {
+  display: inline-block;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: bold;
+  border-bottom: 1px solid currentColor;
+  padding-bottom: 4px;
+}
+
+.featured-app:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+@media (max-width: 700px) {
+  .featured-app-screens {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .service-media .featured-app-screens img:nth-child(n + 3) {
+    display: none;
+  }
+}

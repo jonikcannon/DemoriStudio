@@ -12,7 +12,7 @@ import { BookingLookupComponent, BookingLookupResult } from './booking-lookup/bo
 import { AdminEtsyComponent } from './admin-etsy/admin-etsy.component';
 import { CartComponent, CartItem } from './cart/cart.component';
 import { getApiBaseUrl, mediaUrl } from './media-url';
-import { defaultSiteContent, ETSY_SHOP_URL, NavKey, SiteContent, SiteSection } from './site-content';
+import { defaultSiteContent, ETSY_SHOP_URL, NavKey, ServiceDetails, SiteContent, SiteSection } from './site-content';
 
 type Work = { id?: string; image: string; title: string; type: string; size?: string; price?: number; mediaType?: 'image' | 'video' };
 // `description` is written by hand in storage/media/descriptions.json and
@@ -146,7 +146,9 @@ export class AppComponent implements OnInit {
   private serviceNameList?: string[];
   get serviceNames(): string[] { return this.serviceNameList ??= this.services.map(service => service.name); }
 
-  services: Service[] = [
+  // Defaults for every service. Titles, copy, and prices can be changed in the
+  // admin panel (saved as content.services); see applyServiceEdits().
+  private readonly defaultServices: Service[] = [
     {
       name: 'Digital prints',
       icon: '▦',
@@ -285,9 +287,16 @@ export class AppComponent implements OnInit {
       icon: '◫',
       title: 'Custom app development',
       text: 'Web and mobile apps built around how your business actually runs -- booking and scheduling, customer portals, internal tools, and integrations with the services you already use, like Stripe, Google, and Etsy.',
-      // No photo: the media panel shows the icon and title instead.
       image: '',
       mediaType: 'image',
+      featuredApp: {
+        name: 'CasinoSims',
+        tagline: 'Casino games and sports-betting simulator, with virtual chips only.',
+        url: 'https://play.google.com/store/apps/details?id=com.casinosims.app',
+        store: 'Google Play',
+        icon: 'assets/apps/casinosims/icon.png',
+        screenshots: [1, 2, 3, 4].map(n => `assets/apps/casinosims/screen-${n}.jpg`)
+      },
       pricingTitle: 'App development pricing',
       tiers: [
         { label: 'Prototype / MVP', price: '$2,000 - $5,000', details: 'A focused first version with the core features, ready to put in front of real users.' },
@@ -319,6 +328,10 @@ export class AppComponent implements OnInit {
       linkLabel: 'Shop on Etsy'
     }
   ];
+  // What the site shows: the defaults with any saved admin edits applied.
+  services: Service[] = this.defaultServices;
+  // The admin editor's working copy, one per service, saved as content.services.
+  serviceEdits: ServiceDetails[] = [];
   work: Work[] = [
     { title: 'Headland House', type: 'Aerial', size: 'tall', image: 'https://images.unsplash.com/photo-1494526585095-c41746248156?auto=format&fit=crop&w=1100&q=85' },
     { title: 'Quiet Morning', type: 'Portraits', image: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=1100&q=85' },
@@ -531,6 +544,7 @@ export class AppComponent implements OnInit {
       const incoming = await response.json();
       this.content = { ...defaultSiteContent, ...incoming };
       this.applyTheme();
+      this.applyServiceEdits();
       this.changeDetector.detectChanges();
     } catch {
       // The tracked defaults keep the public shell usable while the API is unavailable.
@@ -1019,6 +1033,7 @@ export class AppComponent implements OnInit {
       if (!response.ok) throw new Error(body?.error || 'Could not load site content.');
       this.content = body.content || body;
       this.applyTheme();
+      this.applyServiceEdits();
     } catch (error) {
       this.adminError = error instanceof Error ? error.message : 'Could not load site content.';
     }
@@ -1039,6 +1054,7 @@ export class AppComponent implements OnInit {
           statement: this.content.statement,
           about: { ...this.content.about, features: this.savableAboutFeatures() },
           websites: this.savableWebsites(),
+          services: this.savableServiceEdits(),
           theme: this.content.theme,
           contact: this.content.contact
         })
@@ -1047,6 +1063,7 @@ export class AppComponent implements OnInit {
       if (!response.ok) throw new Error(body?.error || 'Could not save site content.');
       this.content = body.content;
       this.applyTheme();
+      this.applyServiceEdits();
     } catch (error) {
       this.adminError = error instanceof Error ? error.message : 'Could not save site content.';
     }
@@ -1116,6 +1133,58 @@ export class AppComponent implements OnInit {
     [list[index], list[target]] = [list[target], list[index]];
     this.content.websites = list;
   }
+  private serviceDetails(service: Service): ServiceDetails {
+    return {
+      name: service.name,
+      title: service.title,
+      text: service.text,
+      pricingTitle: service.pricingTitle,
+      tiers: service.tiers.map(item => ({ ...item })),
+      addons: service.addons.map(item => ({ ...item }))
+    };
+  }
+
+  // Saved edits replace a service's copy and prices; media and links stay as
+  // defined in code. Also resets the admin editor to what's now live.
+  private applyServiceEdits() {
+    const edits = new Map((this.content.services || []).map(edit => [edit.name, edit]));
+    this.services = this.defaultServices.map(service => {
+      const edit = edits.get(service.name);
+      return edit ? { ...service, ...this.serviceDetails({ ...service, ...edit }) } : service;
+    });
+    this.serviceEdits = this.services.map(service => this.serviceDetails(service));
+  }
+
+  // Only services that differ from their defaults are stored, so later
+  // changes to an untouched service's defaults still reach the site.
+  private savableServiceEdits(): ServiceDetails[] {
+    const clean = (items: ServiceDetails['tiers']) => items
+      .map(item => ({ label: item.label.trim(), price: item.price.trim(), details: item.details.trim() }))
+      .filter(item => item.label || item.price || item.details);
+    return this.serviceEdits
+      .map(edit => ({ ...edit, title: edit.title.trim(), text: edit.text.trim(), pricingTitle: edit.pricingTitle.trim(), tiers: clean(edit.tiers), addons: clean(edit.addons) }))
+      .filter(edit => {
+        const original = this.defaultServices.find(service => service.name === edit.name);
+        return !original || JSON.stringify(edit) !== JSON.stringify(this.serviceDetails(original));
+      });
+  }
+
+  readonly serviceItemLists = [
+    { key: 'tiers' as const, label: 'Pricing', single: 'price' },
+    { key: 'addons' as const, label: 'Add-ons and rates', single: 'add-on' }
+  ];
+
+  addServiceItem(edit: ServiceDetails, list: 'tiers' | 'addons') {
+    edit[list] = [...edit[list], { label: '', price: '', details: '' }];
+  }
+  removeServiceItem(edit: ServiceDetails, list: 'tiers' | 'addons', index: number) {
+    edit[list] = edit[list].filter((_, i) => i !== index);
+  }
+  resetServiceEdit(index: number) {
+    const original = this.defaultServices.find(service => service.name === this.serviceEdits[index].name);
+    if (original) this.serviceEdits[index] = this.serviceDetails(original);
+  }
+
   private savableWebsites() {
     return (this.content.websites || [])
       .map(site => ({ title: site.title.trim(), url: site.url.trim(), image: site.image || '' }))

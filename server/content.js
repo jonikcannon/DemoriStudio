@@ -187,19 +187,21 @@ function validateContent(input) {
   if (!Array.isArray(input.services) || input.services.length > 30) throw new Error('services is invalid.');
   for (const service of input.services) {
     if (!isPlainObject(service)) throw new Error('Each service must be an object.');
-    assertKeys(service, ['name', 'icon', 'title', 'text', 'image', 'mediaType', 'poster', 'pricingTitle', 'tiers', 'addons'], 'services[]');
-    for (const field of ['name', 'icon', 'title', 'text', 'pricingTitle']) assertString(service[field], field === 'text' ? maxLengths.serviceText : maxLengths.serviceName, `service.${field}`, true);
-    assertMediaReference(service.image, 'service.image');
-    assertMediaReference(service.poster || '', 'service.poster');
-    if (!['image', 'video'].includes(service.mediaType)) throw new Error('service.mediaType is invalid.');
+    // Admin edits to the services defined in the frontend, matched by name:
+    // copy and prices only, media stays in code.
+    assertKeys(service, ['name', 'title', 'text', 'pricingTitle', 'tiers', 'addons'], 'services[]');
+    assertString(service.name, maxLengths.serviceName, 'service.name', true);
+    assertString(service.title, maxLengths.serviceName, 'service.title', true);
+    assertString(service.text, maxLengths.serviceText, 'service.text');
+    assertString(service.pricingTitle, maxLengths.serviceName, 'service.pricingTitle');
     for (const collection of ['tiers', 'addons']) {
       if (!Array.isArray(service[collection]) || service[collection].length > 20) throw new Error(`service.${collection} is invalid.`);
       service[collection].forEach(item => {
         if (!isPlainObject(item)) throw new Error(`service.${collection} item is invalid.`);
         assertKeys(item, ['label', 'price', 'details'], `service.${collection}[]`);
-        assertString(item.label, maxLengths.label, 'service item label', true);
-        assertString(item.price, 80, 'service item price', true);
-        assertString(item.details, maxLengths.paragraph, 'service item details', true);
+        assertString(item.label, maxLengths.label, `${service.name} pricing row name`, true);
+        assertString(item.price, 80, `${service.name} pricing row price`, true);
+        assertString(item.details, maxLengths.paragraph, `${service.name} pricing row details`);
       });
     }
   }

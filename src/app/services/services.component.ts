@@ -26,7 +26,11 @@ export type Service = {
   // Shows the live Etsy shop listings (GET /api/etsy/listings) in place of the
   // image, falling back to it -- or to a shop link panel -- when there are none.
   etsyListings?: boolean;
+  // A published app shown in the media panel (icon, screenshots, store link).
+  featuredApp?: FeaturedApp;
 };
+
+export type FeaturedApp = { name: string; tagline: string; url: string; store: string; icon: string; screenshots: string[] };
 
 export type EtsyListing = {
   id: string;
@@ -186,6 +190,10 @@ export class ServicesComponent implements OnChanges {
   private isTypingTarget(target: EventTarget | null) {
     if (!(target instanceof HTMLElement)) return false;
     return !!target.closest('input, textarea, select, [contenteditable="true"]');
+  }
+
+  showsFeaturedApp(service: Service): boolean {
+    return Boolean(service.featuredApp);
   }
 
   showsEtsyListings(service: Service): boolean {

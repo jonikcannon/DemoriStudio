@@ -70,7 +70,17 @@
           <span class="etsy-listing-price">{{ formatEtsyPrice(listing) }}</span>
         </a>
       </div>
-      <ng-container *ngIf="!showsWebsites(service) && !showsEtsyListings(service)">
+      <a class="featured-app" *ngIf="service.featuredApp as app" [href]="app.url" target="_blank" rel="noopener noreferrer">
+        <span class="featured-app-head">
+          <img class="featured-app-icon" [src]="app.icon" alt="" width="56" height="56">
+          <span><b>{{ app.name }}</b><small>{{ app.tagline }}</small></span>
+        </span>
+        <span class="featured-app-screens">
+          <img *ngFor="let shot of app.screenshots; let i = index" [src]="shot" [alt]="app.name + ' screenshot ' + (i + 1)" loading="lazy">
+        </span>
+        <span class="featured-app-store">Get it on {{ app.store }} <span aria-hidden="true">↗</span></span>
+      </a>
+      <ng-container *ngIf="!showsWebsites(service) && !showsEtsyListings(service) && !showsFeaturedApp(service)">
         <img *ngIf="service.mediaType !== 'video' && service.image" [src]="service.image" [alt]="service.title">
         <a class="service-media-placeholder" *ngIf="service.mediaType !== 'video' && !service.image && service.link" [href]="service.link" target="_blank" rel="noreferrer">
           <span class="service-media-placeholder-icon" aria-hidden="true">{{ service.icon }}</span>

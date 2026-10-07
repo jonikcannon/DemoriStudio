@@ -2,6 +2,10 @@ export type SiteSection = 'home' | 'products' | 'gallery' | 'services' | 'about'
 
 export type NavKey = 'catalog' | 'services' | 'booking' | 'about' | 'shop';
 
+export type ServiceItem = { label: string; price: string; details: string };
+// The admin-editable part of a service; media, links, and icons stay in code.
+export type ServiceDetails = { name: string; title: string; text: string; pricingTitle: string; tiers: ServiceItem[]; addons: ServiceItem[] };
+
 // The 3D printing side of the business is sold through Etsy, not this site's
 // own Stripe cart, so the nav item, footer link, and 3D Printing service card
 // all point here.
@@ -40,7 +44,8 @@ export type SiteContent = {
     // Highlights shown below the About copy; `image` is optional.
     features: { title: string; description: string; image: string }[];
   };
-  services: any[];
+  // Admin edits to the services defined in AppComponent, matched by name.
+  services: ServiceDetails[];
   work: any[];
   // Sites shown as screenshot cards on the Websites service.
   websites: { title: string; url: string; image?: string }[];

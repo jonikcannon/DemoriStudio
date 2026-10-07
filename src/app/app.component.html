@@ -309,6 +309,33 @@
           </fieldset>
 
           <fieldset class="admin-card">
+            <legend>Services and prices</legend>
+            <p class="admin-card-hint">
+              Edit each service's text and prices. Photos and videos stay as they are. A pricing row with
+              every field empty is dropped when you save.
+            </p>
+            <details class="service-editor" *ngFor="let edit of serviceEdits; let s = index">
+              <summary><b>{{ edit.name }}</b> <span>{{ edit.title }}</span></summary>
+              <label>Title<input [(ngModel)]="edit.title" [ngModelOptions]="{ standalone: true }" required></label>
+              <label>Description<textarea [(ngModel)]="edit.text" [ngModelOptions]="{ standalone: true }" rows="3"></textarea></label>
+              <label>Pricing heading<input [(ngModel)]="edit.pricingTitle" [ngModelOptions]="{ standalone: true }"></label>
+              <ng-container *ngFor="let list of serviceItemLists">
+                <p class="service-editor-list-title">{{ list.label }}</p>
+                <div class="service-editor-item" *ngFor="let item of edit[list.key]; let i = index">
+                  <div class="two-up">
+                    <label>Name<input [(ngModel)]="item.label" [ngModelOptions]="{ standalone: true }"></label>
+                    <label>Price<input [(ngModel)]="item.price" [ngModelOptions]="{ standalone: true }" placeholder="e.g. $150 - $250"></label>
+                  </div>
+                  <label>Details<input [(ngModel)]="item.details" [ngModelOptions]="{ standalone: true }"></label>
+                  <button type="button" class="underlined" (click)="removeServiceItem(edit, list.key, i)">Remove</button>
+                </div>
+                <button type="button" class="underlined" (click)="addServiceItem(edit, list.key)">Add {{ list.single }} +</button>
+              </ng-container>
+              <button type="button" class="underlined service-editor-reset" (click)="resetServiceEdit(s)">Reset {{ edit.name }} to default</button>
+            </details>
+          </fieldset>
+
+          <fieldset class="admin-card">
             <legend>Contact</legend>
             <label>Eyebrow<input [(ngModel)]="content.contact.eyebrow" name="contentContactEyebrow" required></label>
             <label>Contact heading<input [(ngModel)]="content.contact.heading" name="contentHeading" required></label>
