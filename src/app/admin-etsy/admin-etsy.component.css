@@ -430,3 +430,32 @@ textarea {
     gap: 0;
   }
 }
+
+/* Weight + L x W x H, needed by calculated shipping profiles. */
+.etsy-package {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: 18px;
+}
+
+.etsy-measure {
+  display: flex;
+  gap: 8px;
+}
+
+.etsy-measure input {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.etsy-measure select {
+  flex: 0 0 auto;
+  width: auto;
+}
+
+@media (max-width: 700px) {
+  .etsy-package {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+}

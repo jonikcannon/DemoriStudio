@@ -5,9 +5,10 @@ import { getApiBaseUrl } from '../media-url';
 
 type EtsyStatus = { configured: boolean; connected: boolean; connectedAt: string | null; redirectUri: string; printInboxPath: string };
 type Option = { id: number; label: string };
+type ShippingOption = Option & { calculated?: boolean };
 type Category = { id: number; path: string };
 type EtsyOptions = {
-  shippingProfiles: Option[];
+  shippingProfiles: ShippingOption[];
   processingProfiles: Option[];
   returnPolicies: Option[];
   usedCategories: Category[];
@@ -147,6 +148,12 @@ export class AdminEtsyComponent implements OnChanges, OnDestroy {
       quantity: 999,
       tags: '',
       materials: '',
+      weight: null as number | null,
+      weightUnit: 'oz',
+      length: null as number | null,
+      width: null as number | null,
+      height: null as number | null,
+      dimensionsUnit: 'in',
       shippingProfileId: null as number | null,
       processingProfileId: null as number | null,
       returnPolicyId: null as number | null,
@@ -282,11 +289,18 @@ export class AdminEtsyComponent implements OnChanges, OnDestroy {
     this.photos.unshift(photo);
   }
 
+  // Etsy refuses a listing on a calculated shipping profile without them.
+  get needsPackageSize(): boolean {
+    const profile = this.options?.shippingProfiles.find(option => option.id === this.listing.shippingProfileId);
+    return Boolean(profile?.calculated);
+  }
+
   get canSubmit(): boolean {
     const l = this.listing;
     return Boolean(
       !this.submitting && l.title.trim() && l.description.trim() && l.price && l.quantity &&
-      this.selectedCategory && l.shippingProfileId && l.processingProfileId && l.returnPolicyId && this.photos.length
+      this.selectedCategory && l.shippingProfileId && l.processingProfileId && l.returnPolicyId && this.photos.length &&
+      (!this.needsPackageSize || (l.weight && l.length && l.width && l.height))
     );
   }
 
@@ -326,8 +340,8 @@ export class AdminEtsyComponent implements OnChanges, OnDestroy {
 
   // Keeps the shop-level choices (profiles, category) for the next item.
   private resetForm() {
-    const { shippingProfileId, processingProfileId, returnPolicyId } = this.listing;
-    this.listing = { ...this.emptyListing(), shippingProfileId, processingProfileId, returnPolicyId };
+    const { shippingProfileId, processingProfileId, returnPolicyId, weightUnit, dimensionsUnit } = this.listing;
+    this.listing = { ...this.emptyListing(), shippingProfileId, processingProfileId, returnPolicyId, weightUnit, dimensionsUnit };
     this.releasePhotos(this.photos);
     this.photos = [];
     this.imported = null;

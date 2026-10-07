@@ -108,6 +108,23 @@
         </label>
       </div>
 
+      <div class="etsy-package">
+        <label>Weight <span class="etsy-optional">{{ needsPackageSize ? 'required by this shipping profile' : 'optional' }}</span>
+          <span class="etsy-measure">
+            <input [(ngModel)]="listing.weight" name="weight" type="number" min="0" step="any" [required]="needsPackageSize">
+            <select [(ngModel)]="listing.weightUnit" name="weightUnit"><option>oz</option><option>lb</option><option>g</option><option>kg</option></select>
+          </span>
+        </label>
+        <label>Package size (L × W × H) <span class="etsy-optional">{{ needsPackageSize ? 'required by this shipping profile' : 'optional' }}</span>
+          <span class="etsy-measure">
+            <input [(ngModel)]="listing.length" name="length" type="number" min="0" step="any" placeholder="L" [required]="needsPackageSize">
+            <input [(ngModel)]="listing.width" name="width" type="number" min="0" step="any" placeholder="W" [required]="needsPackageSize">
+            <input [(ngModel)]="listing.height" name="height" type="number" min="0" step="any" placeholder="H" [required]="needsPackageSize">
+            <select [(ngModel)]="listing.dimensionsUnit" name="dimensionsUnit"><option>in</option><option>ft</option><option>cm</option><option>mm</option><option>m</option></select>
+          </span>
+        </label>
+      </div>
+
       <p class="etsy-muted">Listed as made by you, made to order, a finished item (not a supply) -- the same as your current listings.</p>
 
       <label class="etsy-checkbox"><input type="checkbox" [(ngModel)]="listing.publish" name="publish"> Publish now <span class="etsy-optional">otherwise it's saved as a draft for you to review on Etsy ($0.20 Etsy fee when published)</span></label>

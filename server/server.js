@@ -1015,7 +1015,10 @@ function sendEtsyError(res, error) {
     return res.status(409).json({ error: error.message, notConnected: true });
   }
   console.error('Etsy admin request failed.', error.message || error);
-  return res.status(502).json({ error: error.message || 'Etsy request failed.' });
+  // Etsy rejecting the listing's data is a 422, not a 502: Cloudflare swaps a
+  // 502 for its own error page, which hid Etsy's message from the admin.
+  const rejected = error instanceof etsySeller.EtsyApiError && error.status >= 400 && error.status < 500;
+  return res.status(rejected ? 422 : 502).json({ error: error.message || 'Etsy request failed.' });
 }
 
 app.get('/api/admin/etsy/status', auth, (req, res) => {

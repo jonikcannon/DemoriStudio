@@ -37,6 +37,14 @@ let taxonomy = null; // { nodes: Map<id, path>, fetchedAt }
 class EtsyNotConnectedError extends Error {}
 // Bad form input, caught before anything is sent to Etsy.
 class ListingInputError extends Error {}
+// A request Etsy answered with an error; status is Etsy's HTTP status, so a
+// 4xx (bad listing data) can be told apart from Etsy being unreachable.
+class EtsyApiError extends Error {
+  constructor(message, status) {
+    super(message);
+    this.status = status;
+  }
+}
 
 function redirectUri() {
   const explicit = String(process.env.ETSY_REDIRECT_URI || '').trim();
@@ -197,7 +205,7 @@ async function sellerRequest(method, apiPath, body) {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     if (response.status === 401) throw new EtsyNotConnectedError('Etsy rejected the saved connection. Click "Connect Etsy" to reconnect.');
-    throw new Error(payload.error || `Etsy returned ${response.status}.`);
+    throw new EtsyApiError(payload.error || `Etsy returned ${response.status}.`, response.status);
   }
   return payload;
 }
@@ -251,7 +259,13 @@ async function options() {
   return {
     shippingProfiles: (shipping.results || [])
       .filter(profile => !profile.is_deleted)
-      .map(profile => ({ id: profile.shipping_profile_id, label: etsy.decodeEntities(profile.title) || `Profile ${profile.shipping_profile_id}` })),
+      .map(profile => ({
+        id: profile.shipping_profile_id,
+        label: etsy.decodeEntities(profile.title) || `Profile ${profile.shipping_profile_id}`,
+        // Calculated profiles price shipping from the package, so Etsy refuses
+        // a listing on one without the item's weight and dimensions.
+        calculated: profile.profile_type === 'calculated'
+      })),
     processingProfiles: (processing.results || []).map(profile => ({
       id: profile.readiness_state_id,
       label: profile.processing_days_display_label
@@ -280,6 +294,28 @@ function cleanList(value, { max, maxLength, pattern, field }) {
     if (!pattern.test(item)) throw new ListingInputError(`"${item}" has characters Etsy doesn't allow in ${field}.`);
   }
   return [...new Set(items)];
+}
+
+const WEIGHT_UNITS = ['oz', 'lb', 'g', 'kg'];
+const DIMENSION_UNITS = ['in', 'ft', 'mm', 'cm', 'm'];
+
+// Weight and L x W x H: optional, but all-or-nothing, and required by Etsy on
+// calculated shipping profiles.
+function packageSize(input) {
+  const fields = { weight: 'Weight', length: 'Length', width: 'Width', height: 'Height' };
+  const given = Object.keys(fields).filter(key => input?.[key] !== null && input?.[key] !== undefined && input?.[key] !== '');
+  if (!given.length) return null;
+  const size = {};
+  for (const [key, label] of Object.entries(fields)) {
+    const value = Number(input?.[key]);
+    if (!Number.isFinite(value) || value <= 0 || value > 100000) {
+      throw new ListingInputError(`${label} must be a number above 0 (fill in weight and all three dimensions, or none).`);
+    }
+    size[key] = value;
+  }
+  size.weightUnit = WEIGHT_UNITS.includes(input?.weightUnit) ? input.weightUnit : 'oz';
+  size.dimensionsUnit = DIMENSION_UNITS.includes(input?.dimensionsUnit) ? input.dimensionsUnit : 'in';
+  return size;
 }
 
 function positiveInt(value, field) {
@@ -348,6 +384,7 @@ async function validateListing(input) {
     returnPolicyId: positiveInt(input?.returnPolicyId, 'Return policy'),
     processingProfileId: positiveInt(input?.processingProfileId, 'Processing profile'),
     tags: cleanList(input?.tags, { max: 13, maxLength: 20, pattern: /^[\p{L}\p{Nd}\p{Zs}\-'™©®]+$/u, field: 'tags' }),
+    size: packageSize(input),
     materials: cleanList(input?.materials, { max: 13, maxLength: 45, pattern: /^[\p{L}\p{Nd}\p{Zs}]+$/u, field: 'materials' }),
     files,
     publish: input?.publish === true
@@ -371,6 +408,14 @@ async function createListing(input) {
   });
   if (listing.tags.length) form.set('tags', listing.tags.join(','));
   if (listing.materials.length) form.set('materials', listing.materials.join(','));
+  if (listing.size) {
+    form.set('item_weight', String(listing.size.weight));
+    form.set('item_weight_unit', listing.size.weightUnit);
+    form.set('item_length', String(listing.size.length));
+    form.set('item_width', String(listing.size.width));
+    form.set('item_height', String(listing.size.height));
+    form.set('item_dimensions_unit', listing.size.dimensionsUnit);
+  }
 
   const created = await sellerRequest('POST', `/shops/${shopId}/listings`, form);
   const listingId = created.listing_id;
@@ -414,5 +459,5 @@ async function createListing(input) {
 }
 
 module.exports = {
-  EtsyNotConnectedError, ListingInputError, status, startConnect, finishConnect, disconnect, options, searchCategories, createListing
+  EtsyNotConnectedError, ListingInputError, EtsyApiError, status, startConnect, finishConnect, disconnect, options, searchCategories, createListing
 };
