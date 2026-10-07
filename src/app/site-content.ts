@@ -99,7 +99,7 @@ export const defaultSiteContent: SiteContent = {
   services: [],
   work: [],
   websites: [
-    { title: 'Demori Studios', url: 'https://demori-studios.com', image: 'assets/websites/demori-studios.jpg' },
+    { title: 'Demori Studios', url: 'https://demori-studios.com', image: 'assets/websites/demori-studios-v2.jpg' },
     { title: 'Fairview Community Center', url: 'https://fairviewcommunitycenter.com', image: 'assets/websites/fairview-community-center.jpg' }
   ],
   theme: { primary: '#26362e', background: '#f4f2ec', text: '#1f211d' },

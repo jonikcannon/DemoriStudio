@@ -63,7 +63,7 @@ const defaults = {
   // Sites shown as screenshot cards on the Websites service. Not framed live:
   // most sites, these two included, send X-Frame-Options and render blank.
   websites: [
-    { title: 'Demori Studios', url: 'https://demori-studios.com', image: 'assets/websites/demori-studios.jpg' },
+    { title: 'Demori Studios', url: 'https://demori-studios.com', image: 'assets/websites/demori-studios-v2.jpg' },
     { title: 'Fairview Community Center', url: 'https://fairviewcommunitycenter.com', image: 'assets/websites/fairview-community-center.jpg' }
   ],
   // CSS custom properties applied at runtime (see AppComponent.applyTheme).
