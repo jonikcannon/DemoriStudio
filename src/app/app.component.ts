@@ -1160,10 +1160,13 @@ export class AppComponent implements OnInit {
     void this.loadBookingSlots();
   }
 
-  // Contact details live at the bottom of the Book/Contact Us page.
-  openContact() {
-    this.openBooking();
-    setTimeout(() => document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' }));
+  // Contact details live at the bottom of the Book/Contact Us page. Scrolls
+  // once the booking slots have rendered, since they push the section down.
+  async openContact() {
+    this.activeSection = 'booking';
+    this.menuOpen = false;
+    await this.loadBookingSlots().catch(() => undefined);
+    setTimeout(() => document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' }), 50);
   }
 
   // Hero button target; 'booking' and 'contact' both open the combined page.
