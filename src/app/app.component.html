@@ -13,7 +13,7 @@
 
 <main id="top">
   <section class="hero" *ngIf="activeSection === 'home'">
-    <div class="hero-copy"><p class="eyebrow">{{ content.hero.eyebrow }}</p><h1>{{ content.hero.headline }}</h1><p class="intro">{{ content.hero.intro }}</p><button class="underlined" (click)="goToSection(content.hero.ctaTarget)">{{ content.hero.ctaLabel }} <span>↓</span></button></div>
+    <div class="hero-copy"><p class="eyebrow">{{ content.hero.eyebrow }}</p><h1>{{ content.hero.headline }}</h1><p class="intro">{{ content.hero.intro }}</p><div class="hero-actions"><button class="underlined" (click)="goToSection(content.hero.ctaTarget)">{{ content.hero.ctaLabel }} <span>↓</span></button><button class="underlined" *ngIf="content.hero.ctaTarget !== 'booking'" (click)="openBooking(); scrollToTop()">Book a session <span>→</span></button></div></div>
     <!-- [muted]="true" binds the PROPERTY, not the attribute. A bare `muted`
          only reflects to the property when the browser parses static HTML;
          Angular creates the element and then sets attributes, so the property
@@ -23,6 +23,14 @@
   </section>
 
   <section class="statement" *ngIf="activeSection === 'home'"><p class="eyebrow">{{ content.statement.eyebrow }}</p><h2>{{ content.statement.heading }}</h2><div class="statement-note">{{ content.statement.copy }}<span>↘</span></div></section>
+
+  <app-home-highlights *ngIf="activeSection === 'home'"
+    [services]="services"
+    [websites]="content.websites"
+    [etsyShopUrl]="etsyShopUrl"
+    (openService)="openServiceTab($event)"
+    (book)="openBooking(); scrollToTop()"
+    (contact)="openContact()"></app-home-highlights>
 
   <section class="catalog-controls" *ngIf="activeSection === 'products'">
     <div class="section-head">
@@ -612,4 +620,22 @@
   </aside>
 </div>
 
-<footer><a class="brand" (click)="activeSection = 'home'; menuOpen = false"><img src="assets/brand/logo-mark-reversed.svg" alt="" class="brand-mark">{{ content.site.brand }}</a><p>© 2026 {{ content.site.brand }}. {{ content.site.footerText }}</p><div><a (click)="openAdmin()">Admin</a><a [href]="etsyShopUrl" target="_blank" rel="noreferrer">Etsy</a><a *ngFor="let link of content.site.socialLinks" [href]="link.url" target="_blank" rel="noreferrer">{{ link.label }}</a></div></footer>
+<footer>
+  <div class="footer-brand">
+    <a class="brand" (click)="activeSection = 'home'; menuOpen = false; scrollToTop()"><img src="assets/brand/logo-mark-reversed.svg" alt="" class="brand-mark">{{ content.site.brand }}</a>
+    <p>{{ content.site.description }}</p>
+  </div>
+  <nav class="footer-col" aria-label="Services">
+    <b>Services</b>
+    <a *ngFor="let service of services" (click)="openServiceTab(service.name)">{{ service.name }}</a>
+  </nav>
+  <nav class="footer-col" aria-label="Get in touch">
+    <b>Work with us</b>
+    <a (click)="openBooking(); scrollToTop()">Book a session</a>
+    <a (click)="openContact()">Start a project</a>
+    <a [href]="etsyShopUrl" target="_blank" rel="noreferrer">3D print shop on Etsy ↗</a>
+    <a *ngIf="featuredAppLink as app" [href]="app.url" target="_blank" rel="noopener noreferrer">{{ app.name }} on {{ app.store }} ↗</a>
+    <a *ngFor="let link of content.site.socialLinks" [href]="link.url" target="_blank" rel="noreferrer">{{ link.label }} ↗</a>
+  </nav>
+  <div class="footer-legal"><p>© 2026 {{ content.site.brand }}. {{ content.site.footerText }}</p><a (click)="openAdmin()">Admin</a></div>
+</footer>

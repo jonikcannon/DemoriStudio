@@ -1,0 +1,82 @@
+<section class="home-services">
+  <div class="home-head">
+    <div>
+      <p class="eyebrow">WHAT WE DO</p>
+      <h2>One studio, from the camera to the code.</h2>
+    </div>
+    <p class="home-lede">Photography and aerials, websites and apps, and 3D-printed pieces. Pick a service to see what's included and what it costs.</p>
+  </div>
+  <div class="home-service-grid">
+    <button type="button" class="home-service" *ngFor="let service of services; trackBy: trackByName" (click)="openService.emit(service.name)">
+      <span class="home-service-icon" aria-hidden="true">{{ service.icon }}</span>
+      <span class="home-service-name">{{ service.name }}</span>
+      <span class="home-service-title">{{ service.title }}</span>
+      <span class="home-service-price" *ngIf="startingPrice(service) as price">{{ price }}</span>
+      <span class="home-service-more">Explore <span aria-hidden="true">→</span></span>
+    </button>
+  </div>
+</section>
+
+<section class="home-projects" *ngIf="featuredApp || featuredSite || etsyListings.length">
+  <div class="home-head">
+    <div>
+      <p class="eyebrow">LATEST PROJECTS</p>
+      <h2>Recently built and made.</h2>
+    </div>
+  </div>
+  <div class="home-project-grid">
+    <article class="home-project" *ngIf="featuredApp as featured">
+      <p class="home-project-kind">App · {{ featured.app.store }}</p>
+      <div class="home-project-app">
+        <img class="home-project-app-icon" [src]="featured.app.icon" alt="" width="64" height="64">
+        <div>
+          <h3>{{ featured.app.name }}</h3>
+          <p>{{ featured.app.tagline }}</p>
+        </div>
+      </div>
+      <div class="home-project-shots">
+        <img *ngFor="let shot of featured.app.screenshots.slice(0, 3); let i = index" [src]="shot" [alt]="featured.app.name + ' screenshot ' + (i + 1)" loading="lazy">
+      </div>
+      <div class="home-project-actions">
+        <a class="underlined" [href]="featured.app.url" target="_blank" rel="noopener noreferrer">Get it on {{ featured.app.store }} <span aria-hidden="true">↗</span></a>
+        <button type="button" class="underlined" (click)="openService.emit(featured.service.name)">App development <span aria-hidden="true">→</span></button>
+      </div>
+    </article>
+
+    <article class="home-project" *ngIf="featuredSite as site">
+      <p class="home-project-kind">Website</p>
+      <a class="home-project-site" [href]="site.url" target="_blank" rel="noopener noreferrer">
+        <img *ngIf="site.image" [src]="site.image" [alt]="'Screenshot of ' + site.title" loading="lazy">
+        <span><b>{{ site.title }}</b><small>{{ host(site.url) }} ↗</small></span>
+      </a>
+      <div class="home-project-actions">
+        <button type="button" class="underlined" *ngIf="websitesService" (click)="openService.emit('Websites')">See all websites <span aria-hidden="true">→</span></button>
+      </div>
+    </article>
+
+    <article class="home-project" *ngIf="etsyListings.length">
+      <p class="home-project-kind">3D prints · Etsy</p>
+      <div class="home-project-prints">
+        <a *ngFor="let listing of etsyListings" [href]="listing.url" target="_blank" rel="noreferrer">
+          <img [src]="listing.image" [alt]="listing.imageAlt" loading="lazy">
+          <span>{{ listing.title }}</span>
+          <b>{{ formatPrice(listing) }}</b>
+        </a>
+      </div>
+      <div class="home-project-actions">
+        <a class="underlined" [href]="etsyShopUrl" target="_blank" rel="noreferrer">Visit the shop <span aria-hidden="true">↗</span></a>
+        <button type="button" class="underlined" *ngIf="printService" (click)="openService.emit(printService.name)">Custom prints <span aria-hidden="true">→</span></button>
+      </div>
+    </article>
+  </div>
+</section>
+
+<section class="home-cta">
+  <p class="eyebrow">LET'S WORK TOGETHER</p>
+  <h2>Have a project in mind?</h2>
+  <p>Book a photo session online, or tell us about a website, app, or custom print and we'll reply with options and pricing.</p>
+  <div class="home-cta-actions">
+    <button type="button" class="home-cta-primary" (click)="book.emit()">Book a session</button>
+    <button type="button" class="home-cta-secondary" (click)="contact.emit()">Start a project</button>
+  </div>
+</section>

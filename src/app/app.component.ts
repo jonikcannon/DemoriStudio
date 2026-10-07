@@ -5,6 +5,7 @@ import { WorkComponent } from './work/work.component';
 import { GalleryComponent } from './gallery/gallery.component';
 import { Service, ServicesComponent } from './services/services.component';
 import { ContactFormComponent } from './contact-form/contact-form.component';
+import { HomeHighlightsComponent } from './home-highlights/home-highlights.component';
 import { AboutComponent } from './about/about.component';
 import { Product, ProductEditPayload, ProductOrderPayload, ProductsComponent } from './products/products.component';
 import { BookingComponent, BookingDateRequest, BookingRequest, BookingSlot } from './booking/booking.component';
@@ -33,7 +34,7 @@ type Inquiry = {
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, FormsModule, WorkComponent, GalleryComponent, ServicesComponent, AboutComponent, ProductsComponent, CartComponent, BookingComponent, BookingLookupComponent, AdminEtsyComponent, ContactFormComponent],
+  imports: [CommonModule, FormsModule, WorkComponent, GalleryComponent, ServicesComponent, AboutComponent, ProductsComponent, CartComponent, BookingComponent, BookingLookupComponent, AdminEtsyComponent, ContactFormComponent, HomeHighlightsComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.css'
 })
@@ -1267,6 +1268,22 @@ export class AppComponent implements OnInit {
     this.menuOpen = false;
     await this.loadBookingSlots().catch(() => undefined);
     setTimeout(() => document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' }), 50);
+  }
+
+  // Opens the Services page on one service (home cards, footer links).
+  openServiceTab(name: string) {
+    this.activeService = name;
+    this.activeSection = 'services';
+    this.menuOpen = false;
+    this.scrollToTop();
+  }
+
+  scrollToTop() {
+    window.scrollTo({ top: 0 });
+  }
+
+  get featuredAppLink() {
+    return this.services.find(service => service.featuredApp)?.featuredApp ?? null;
   }
 
   // Hero button target; 'booking' and 'contact' both open the combined page.

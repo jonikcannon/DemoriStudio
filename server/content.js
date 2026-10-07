@@ -27,9 +27,9 @@ const defaults = {
     shop: { label: '3D Prints', visible: true }
   },
   hero: {
-    eyebrow: 'Photography studio',
+    eyebrow: 'Photography · Websites · Apps · 3D prints',
     headline: 'Made to make you look twice.',
-    intro: 'Thoughtful imagery for the places, people, and stories worth remembering.',
+    intro: 'Photography, aerials, websites, and apps for the places, people, and businesses worth remembering.',
     ctaLabel: 'Explore the catalog',
     ctaTarget: 'products',
     video: '',
