@@ -29,6 +29,16 @@ type Inquiry = {
   status: 'new' | 'in-progress' | 'closed';
   createdAt: string;
   emailDelivered?: boolean;
+  // 3D-print requests (server/print-requests.js); files are on the print share.
+  printRequest?: {
+    modelLink: string;
+    quantity: number;
+    size: string;
+    colors: string;
+    neededBy: string;
+    files: { name: string; kind: 'model' | 'photo'; bytes: number }[];
+    folder: string;
+  };
 };
 
 @Component({
@@ -322,7 +332,7 @@ export class AppComponent implements OnInit {
       pricingTitle: 'How ordering works',
       tiers: [
         { label: 'Shop listings', price: 'Priced per item', details: 'Click any item to see its options, shipping, and checkout on Etsy.' },
-        { label: 'Custom requests', price: 'Quoted per design', details: 'Message the shop on Etsy with your idea for a custom print.' }
+        { label: 'Custom requests', price: 'Quoted per design', details: 'Send a model link, your own STL file, or a photo through the contact form and we will reply with a quote.' }
       ],
       addons: [],
       link: ETSY_SHOP_URL,
@@ -1293,6 +1303,10 @@ export class AppComponent implements OnInit {
     this.menuOpen = false;
     await this.loadBookingSlots().catch(() => undefined);
     setTimeout(() => document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' }), 50);
+  }
+
+  printFileNames(files: { name: string }[]): string {
+    return files.map(file => file.name).join(', ');
   }
 
   // Opens the Services page on one service (home cards, footer links).

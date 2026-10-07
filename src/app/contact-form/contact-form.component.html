@@ -1,7 +1,13 @@
 <div class="contact-form-panel">
   <div>
-    <h3>Tell us about your project</h3>
-    <p>Share the property type, timeline, and what coverage you need. We will reply with the right package and next steps.</p>
+    <ng-container *ngIf="isPrintRequest; else projectIntro">
+      <h3>Request a 3D print</h3>
+      <p>Send a link to the model you'd like printed -- MakerWorld, Printables, Thingiverse, or anywhere else -- or attach your own STL or 3MF file, or a photo of what you need. We'll reply with a quote and turnaround.</p>
+    </ng-container>
+    <ng-template #projectIntro>
+      <h3>Tell us about your project</h3>
+      <p>Share the property type, timeline, and what coverage you need. We will reply with the right package and next steps.</p>
+    </ng-template>
   </div>
   <div>
     <p #successBanner class="contact-success-banner" *ngIf="formSuccess" tabindex="-1" role="status">{{ formSuccess }}</p>
@@ -9,8 +15,33 @@
       <label>Name<input type="text" name="name" [(ngModel)]="contact.name" required></label>
       <label>Email<input type="email" name="email" [(ngModel)]="contact.email" required></label>
       <label>Service<select name="service" [(ngModel)]="contact.service"><option *ngFor="let name of services" [value]="name">{{ name }}</option></select></label>
-      <label>Project details<textarea name="message" [(ngModel)]="contact.message" placeholder="Property size, location, and requested media..." required></textarea></label>
-      <button class="underlined" type="submit" [disabled]="submitting">{{ submitting ? 'Sending…' : 'Send inquiry' }} <span>↗</span></button>
+
+      <fieldset class="print-request" *ngIf="isPrintRequest">
+        <legend>What would you like printed?</legend>
+        <label>Link to the model <span class="optional">optional</span>
+          <input type="url" name="modelLink" [(ngModel)]="print.modelLink" placeholder="https://makerworld.com/en/models/...">
+        </label>
+        <div class="print-request-row">
+          <label>Quantity<input type="number" name="quantity" [(ngModel)]="print.quantity" min="1" max="500" step="1"></label>
+          <label>Approximate size <span class="optional">optional</span><input name="size" [(ngModel)]="print.size" placeholder="e.g. about 10 cm tall"></label>
+        </div>
+        <div class="print-request-row">
+          <label>Colors / material <span class="optional">optional</span><input name="colors" [(ngModel)]="print.colors" placeholder="e.g. black PLA, any color"></label>
+          <label>Needed by <span class="optional">optional</span><input type="date" name="neededBy" [(ngModel)]="print.neededBy" [min]="today"></label>
+        </div>
+        <label class="print-request-files">Model files or photos <span class="optional">up to 3 files, 20 MB total</span>
+          <input type="file" multiple accept=".stl,.3mf,.obj,.step,.stp,image/jpeg,image/png,image/webp,.heic" (change)="pickFiles($event)">
+        </label>
+        <ul class="print-request-list" *ngIf="files.length">
+          <li *ngFor="let file of files; let i = index">
+            <span>{{ file.name }} <small>{{ formatSize(file.size) }}</small></span>
+            <button type="button" (click)="removeFile(i)" [attr.aria-label]="'Remove ' + file.name">Remove</button>
+          </li>
+        </ul>
+      </fieldset>
+
+      <label>{{ isPrintRequest ? 'Anything else we should know?' : 'Project details' }}<textarea name="message" [(ngModel)]="contact.message" [placeholder]="isPrintRequest ? 'What it is for, finish or strength needs, questions...' : 'Property size, location, and requested media...'" required></textarea></label>
+      <button class="underlined" type="submit" [disabled]="submitting">{{ submitting ? 'Sending…' : (isPrintRequest ? 'Send print request' : 'Send inquiry') }} <span>↗</span></button>
       <p class="form-error" *ngIf="formError">{{ formError }}</p>
     </form>
   </div>

@@ -45,6 +45,7 @@ const siteContent = require('./content');
 const etsy = require('./etsy');
 const etsySeller = require('./etsy-seller');
 const makerworld = require('./makerworld');
+const printRequests = require('./print-requests');
 orderStore.ensureStore();
 bookingStore.ensureStore();
 
@@ -897,6 +898,24 @@ function getMailer() {
   return mailTransporter;
 }
 
+function printRequestEmailLines(request) {
+  if (!request) return [];
+  const saved = request.folder
+    ? `Saved to: ${request.folder}`
+    : request.files.length ? 'Attachments could not be saved to the print share.' : '';
+  return [
+    '',
+    '3D print request:',
+    `Model link: ${request.modelLink || '-'}`,
+    `Quantity: ${request.quantity}`,
+    `Approximate size: ${request.size || '-'}`,
+    `Colors / material: ${request.colors || '-'}`,
+    `Needed by: ${request.neededBy || '-'}`,
+    `Attachments: ${request.files.map(file => file.name).join(', ') || 'none'}`,
+    saved
+  ].filter(Boolean);
+}
+
 async function sendInquiryEmail(inquiry) {
   const transporter = getMailer();
   const to = String(process.env.CONTACT_TO_EMAIL || process.env.ADMIN_EMAIL || '').trim();
@@ -916,7 +935,8 @@ async function sendInquiryEmail(inquiry) {
     `Submitted: ${inquiry.createdAt}`,
     '',
     'Message:',
-    inquiry.message
+    inquiry.message,
+    ...printRequestEmailLines(inquiry.printRequest)
   ].join('\n');
 
   await transporter.sendMail({
@@ -1612,6 +1632,17 @@ app.post('/api/contact', rateLimit({ windowMs: 900000, max: 30, message: { error
   if (service.length < 2 || service.length > 80) return res.status(400).json({ error: 'Please choose a service.' });
   if (message.length < 8 || message.length > 4000) return res.status(400).json({ error: 'Please include project details.' });
 
+  // 3D printing inquiries can carry print details and model files/photos.
+  let printRequest = null;
+  if (printRequests.isPrintService(service)) {
+    try {
+      printRequest = printRequests.parsePrintRequest(req.body?.printRequest);
+    } catch (error) {
+      if (error instanceof printRequests.PrintRequestError) return res.status(400).json({ error: error.message });
+      throw error;
+    }
+  }
+
   const inquiry = {
     id: randomUUID(),
     name,
@@ -1622,6 +1653,12 @@ app.post('/api/contact', rateLimit({ windowMs: 900000, max: 30, message: { error
     emailDelivered: false,
     createdAt: new Date().toISOString()
   };
+  if (printRequest) {
+    // Stored as the Windows path the admin opens: \\<server>\prints\_requests\...
+    const folder = printRequests.saveToShare(inquiry, printRequest);
+    const share = String(process.env.PRINT_INBOX_PATH || '').trim().replace(/[\\/]_inbox[\\/]?$/i, '');
+    inquiry.printRequest = printRequests.describe(printRequest, folder && share ? `${share}\\${folder}` : folder);
+  }
 
   try {
     appendInquiry(inquiry);

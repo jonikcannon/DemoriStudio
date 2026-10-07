@@ -451,6 +451,15 @@
             </div>
             <p class="inquiry-card-contact"><a [href]="'mailto:' + inquiry.email">{{ inquiry.email }}</a> · {{ inquiry.service }}</p>
             <p class="inquiry-card-message">{{ inquiry.message }}</p>
+            <dl class="inquiry-print" *ngIf="inquiry.printRequest as print">
+              <div *ngIf="print.modelLink"><dt>Model</dt><dd><a [href]="print.modelLink" target="_blank" rel="noopener noreferrer">{{ print.modelLink }}</a></dd></div>
+              <div><dt>Quantity</dt><dd>{{ print.quantity }}</dd></div>
+              <div *ngIf="print.size"><dt>Size</dt><dd>{{ print.size }}</dd></div>
+              <div *ngIf="print.colors"><dt>Colors / material</dt><dd>{{ print.colors }}</dd></div>
+              <div *ngIf="print.neededBy"><dt>Needed by</dt><dd>{{ print.neededBy | date: 'mediumDate' }}</dd></div>
+              <div *ngIf="print.files.length"><dt>Files</dt><dd>{{ printFileNames(print.files) }}</dd></div>
+              <div *ngIf="print.folder"><dt>On the print share</dt><dd><code>{{ print.folder }}</code></dd></div>
+            </dl>
             <div class="inquiry-card-foot">
               <label>Status<select [ngModel]="inquiry.status" (ngModelChange)="updateInquiryStatus(inquiry.id, $event)" [name]="'status-' + inquiry.id"><option value="new">New</option><option value="in-progress">In progress</option><option value="closed">Closed</option></select></label>
               <span class="inquiry-delivery" [class.ok]="inquiry.emailDelivered">{{ inquiry.emailDelivered ? 'Email delivered' : 'Email pending/fallback' }}</span>

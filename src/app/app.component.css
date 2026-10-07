@@ -110,6 +110,10 @@ form input[type="checkbox"]{display:inline-block;width:auto;border:0;padding:0;m
 .inquiry-card-contact{margin:7px 0 6px;font-size:12px;color:#3f433c}
 .inquiry-card-contact a{color:var(--color-text)}
 .inquiry-card-message{margin:0 0 12px;font-size:14px;line-height:1.6;white-space:pre-wrap}
+.inquiry-print{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px 18px;margin:0 0 14px;padding:12px 14px;background:#f6f3ec;border-radius:8px;font-size:13px}
+.inquiry-print div{min-width:0}
+.inquiry-print dt{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#8a8d84;margin-bottom:2px}
+.inquiry-print dd{margin:0;overflow-wrap:anywhere}
 .inquiry-card-foot{display:flex;justify-content:space-between;align-items:center;gap:12px}
 .inquiry-card-foot label{margin:0;font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;display:block}
 .inquiry-card-foot select{display:block;border:1px solid #9ea198;background:var(--color-background);padding:7px 8px;margin-top:5px;font:13px Arial,Helvetica,sans-serif;color:var(--color-text)}
