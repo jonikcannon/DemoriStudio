@@ -1176,6 +1176,7 @@ const SITE_MEDIA_SLOTS = {
   heroPoster: { kind: 'image', maxBytes: 15 * 1024 * 1024 },
   aboutPortrait: { kind: 'image', maxBytes: 15 * 1024 * 1024 },
   aboutFeature: { kind: 'image', maxBytes: 15 * 1024 * 1024 },
+  websiteImage: { kind: 'image', maxBytes: 15 * 1024 * 1024 },
   heroVideo: { kind: 'video', maxBytes: 45 * 1024 * 1024 }
 };
 

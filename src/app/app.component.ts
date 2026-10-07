@@ -281,6 +281,25 @@ export class AppComponent implements OnInit {
       ]
     },
     {
+      name: 'Apps',
+      icon: '◫',
+      title: 'Custom app development',
+      text: 'Web and mobile apps built around how your business actually runs -- booking and scheduling, customer portals, internal tools, and integrations with the services you already use, like Stripe, Google, and Etsy.',
+      // No photo: the media panel shows the icon and title instead.
+      image: '',
+      mediaType: 'image',
+      pricingTitle: 'App development pricing',
+      tiers: [
+        { label: 'Prototype / MVP', price: '$2,000 - $5,000', details: 'A focused first version with the core features, ready to put in front of real users.' },
+        { label: 'Web app', price: '$5,000 - $15,000', details: 'A full web application with accounts, an admin dashboard, payments, and integrations.' },
+        { label: 'Mobile app', price: '$10,000+', details: 'An iOS and Android app with a matching backend, through app store submission.' }
+      ],
+      addons: [
+        { label: 'Hosting and maintenance', price: '$100 - $300 / month', details: 'Hosting, updates, security patches, and monitoring after launch.' },
+        { label: 'New features', price: 'Quoted per feature', details: 'New screens, integrations, or workflows added after launch.' }
+      ]
+    },
+    {
       name: '3D Printing',
       icon: '◇',
       title: '3D-printed pieces from the Etsy shop',
@@ -1082,7 +1101,10 @@ export class AppComponent implements OnInit {
   }
 
   addWebsite() {
-    this.content.websites = [...(this.content.websites || []), { title: '', url: '' }];
+    this.content.websites = [...(this.content.websites || []), { title: '', url: '', image: '' }];
+  }
+  uploadWebsiteImage(event: Event, index: number) {
+    return this.pickAndUploadContentMedia(event, 'websiteImage', 'image', 15, value => (this.content.websites[index].image = value), `websiteImage-${index}`);
   }
   removeWebsite(index: number) {
     this.content.websites = (this.content.websites || []).filter((_, i) => i !== index);
@@ -1096,7 +1118,7 @@ export class AppComponent implements OnInit {
   }
   private savableWebsites() {
     return (this.content.websites || [])
-      .map(site => ({ title: site.title.trim(), url: site.url.trim() }))
+      .map(site => ({ title: site.title.trim(), url: site.url.trim(), image: site.image || '' }))
       .filter(site => site.title || site.url);
   }
 

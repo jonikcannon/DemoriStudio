@@ -44,20 +44,18 @@
       </div>
     </div>
     <div class="service-media">
-      <!-- Mounted only while this tab is active: an iframe loads its page even
-           inside a display:none ancestor, so rendering it always would pull in
-           every listed site as soon as the Services page opens. -->
       <ng-container *ngIf="showsWebsites(service)">
         <ng-container *ngIf="activeWebsite as site">
-          <div class="service-website-caption">
-            <span>{{ site.title }}</span>
-            <a [href]="site.url" target="_blank" rel="noopener noreferrer">Open site <span aria-hidden="true">↗</span></a>
-          </div>
-          <div class="service-website-frame">
-            <iframe [src]="site.safeUrl" [title]="site.title" loading="lazy" referrerpolicy="no-referrer"
-                    sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"></iframe>
-            <button type="button" class="service-website-shield" *ngIf="!interactingWithWebsite" (click)="interactingWithWebsite = true" [attr.aria-label]="'Interact with ' + site.title">Click to interact</button>
-          </div>
+          <a class="service-website-card" [href]="site.url" target="_blank" rel="noopener noreferrer">
+            <span class="service-website-shot">
+              <img *ngIf="site.image; else noShot" [src]="site.image" [alt]="'Screenshot of ' + site.title" loading="lazy">
+              <ng-template #noShot><span class="service-website-noshot">{{ siteHost(site) }}</span></ng-template>
+            </span>
+            <span class="service-website-caption">
+              <span><b>{{ site.title }}</b><small>{{ siteHost(site) }}</small></span>
+              <span class="service-website-open">Visit site <span aria-hidden="true">↗</span></span>
+            </span>
+          </a>
         </ng-container>
         <div class="service-media-cycle" *ngIf="canCycleWebsites()">
           <button type="button" class="service-media-nav" (click)="showPreviousWebsite()" aria-label="Previous website">‹</button>
@@ -78,6 +76,10 @@
           <span class="service-media-placeholder-icon" aria-hidden="true">{{ service.icon }}</span>
           <span>{{ service.linkLabel || 'Visit shop' }} ↗</span>
         </a>
+        <div class="service-media-placeholder" *ngIf="service.mediaType !== 'video' && !service.image && !service.link && !service.etsyListings">
+          <span class="service-media-placeholder-icon" aria-hidden="true">{{ service.icon }}</span>
+          <span>{{ service.title }}</span>
+        </div>
         <video *ngIf="service.mediaType === 'video'" [src]="getServiceMediaSource(service)" [poster]="service.poster || null" autoplay muted loop playsinline preload="metadata" [attr.aria-label]="service.title"></video>
         <div class="service-media-cycle" *ngIf="canCycleAerialVideos(service)">
           <button type="button" class="service-media-nav" (click)="showPreviousAerialVideo()" aria-label="Previous aerial video">‹</button>

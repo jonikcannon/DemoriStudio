@@ -42,8 +42,8 @@ export type SiteContent = {
   };
   services: any[];
   work: any[];
-  // Sites shown live in the Websites service's scrollable iframe list.
-  websites: { title: string; url: string }[];
+  // Sites shown as screenshot cards on the Websites service.
+  websites: { title: string; url: string; image?: string }[];
   // CSS custom properties applied at runtime (see AppComponent.applyTheme). The
   // defaults match the palette the stylesheets shipped with.
   theme: { primary: string; background: string; text: string };
@@ -98,7 +98,10 @@ export const defaultSiteContent: SiteContent = {
   },
   services: [],
   work: [],
-  websites: [],
+  websites: [
+    { title: 'Demori Studios', url: 'https://demori-studios.com', image: 'assets/websites/demori-studios.jpg' },
+    { title: 'Fairview Community Center', url: 'https://fairviewcommunitycenter.com', image: 'assets/websites/fairview-community-center.jpg' }
+  ],
   theme: { primary: '#26362e', background: '#f4f2ec', text: '#1f211d' },
   contact: { eyebrow: "Let's make something", heading: "Have a story in mind? Let's talk.", email: 'hello@example.com' }
 };

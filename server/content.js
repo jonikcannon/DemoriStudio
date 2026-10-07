@@ -60,8 +60,12 @@ const defaults = {
   },
   services: [],
   work: [],
-  // Sites shown, live, in the Websites service's scrollable iframe list.
-  websites: [],
+  // Sites shown as screenshot cards on the Websites service. Not framed live:
+  // most sites, these two included, send X-Frame-Options and render blank.
+  websites: [
+    { title: 'Demori Studios', url: 'https://demori-studios.com', image: 'assets/websites/demori-studios.jpg' },
+    { title: 'Fairview Community Center', url: 'https://fairviewcommunitycenter.com', image: 'assets/websites/fairview-community-center.jpg' }
+  ],
   // CSS custom properties applied at runtime (see AppComponent.applyTheme).
   // The defaults match the palette the stylesheets shipped with.
   theme: { primary: '#26362e', background: '#f4f2ec', text: '#1f211d' },
@@ -101,7 +105,7 @@ function assertString(value, max, field, required = false) {
 function assertMediaReference(value, field) {
   if (value === '') return;
   assertString(value, maxLengths.media, field);
-  if (!/^(assets\/gallery\/|\/uploads\/|\/api\/site-media\/)/.test(value)) {
+  if (!/^(assets\/gallery\/|assets\/websites\/|\/uploads\/|\/api\/site-media\/)/.test(value)) {
     throw new Error(`${field} must reference uploaded media.`);
   }
 }
@@ -215,9 +219,10 @@ function validateContent(input) {
   if (!Array.isArray(input.websites) || input.websites.length > 12) throw new Error('websites is invalid.');
   input.websites.forEach((site, index) => {
     if (!isPlainObject(site)) throw new Error(`websites[${index}] is invalid.`);
-    assertKeys(site, ['title', 'url'], `websites[${index}]`);
+    assertKeys(site, ['title', 'url', 'image'], `websites[${index}]`);
     assertString(site.title, maxLengths.workTitle, `websites[${index}].title`, true);
     assertHttpsUrl(site.url, `websites[${index}].url`);
+    if (site.image !== undefined) assertMediaReference(site.image, `websites[${index}].image`);
   });
 
   const theme = input.theme;

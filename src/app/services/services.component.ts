@@ -1,11 +1,9 @@
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, Input, Output, EventEmitter, OnChanges, SimpleChanges, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
-import { getApiBaseUrl } from '../media-url';
+import { getApiBaseUrl, mediaUrl } from '../media-url';
 
-export type ShowcaseSite = { title: string; url: string };
-type SafeShowcaseSite = ShowcaseSite & { safeUrl: SafeResourceUrl };
+export type ShowcaseSite = { title: string; url: string; image?: string };
 
 export type ServiceTier = { label: string; price: string; details: string };
 export type ServiceAddon = { label: string; price: string; details: string };
@@ -63,24 +61,17 @@ export class ServicesComponent implements OnChanges {
   private readonly api = getApiBaseUrl();
   private aerialVideoIndex = 0;
 
-  safeWebsites: SafeShowcaseSite[] = [];
+  // One site at a time, paged like the Aerial videos (‹ N/M ›).
+  showcaseSites: ShowcaseSite[] = [];
   private websiteIndex = 0;
-  // Whether the visitor has clicked into the current frame. It sits under a
-  // shield until then, matching the Aerial video's page-one-at-a-time cycling
-  // (‹ N/M ›) rather than a scrolling list, so the mouse wheel and arrow keys
-  // move between sites instead of being swallowed by whichever page is loaded.
-  interactingWithWebsite = false;
 
-  constructor(
-    private readonly changeDetector: ChangeDetectorRef,
-    private readonly sanitizer: DomSanitizer
-  ) {}
+  constructor(private readonly changeDetector: ChangeDetectorRef) {}
 
   etsyListings: EtsyListing[] = [];
 
   ngOnChanges(changes: SimpleChanges) {
     if (changes['services'] && this.services.some(service => service.etsyListings)) this.loadEtsyListings();
-    if (changes['websites']) this.buildSafeWebsites();
+    if (changes['websites']) this.buildShowcaseSites();
     if (!changes['aerialVideos']) return;
     if (!this.aerialVideos.length) {
       this.aerialVideoIndex = 0;
@@ -89,26 +80,33 @@ export class ServicesComponent implements OnChanges {
     this.aerialVideoIndex %= this.aerialVideos.length;
   }
 
-  // Only https:// addresses are ever framed (the server enforces it too), and
-  // each is trusted individually rather than bypassing sanitisation wholesale.
-  private buildSafeWebsites() {
+  // Shown as screenshot cards linking out, not live iframes: most sites
+  // (demori-studios.com included) send X-Frame-Options and framed blank.
+  private buildShowcaseSites() {
     this.websiteIndex = 0;
-    this.interactingWithWebsite = false;
-    this.safeWebsites = (this.websites || [])
+    this.showcaseSites = (this.websites || [])
       .filter(site => /^https:\/\//i.test(site.url))
-      .map(site => ({ ...site, safeUrl: this.sanitizer.bypassSecurityTrustResourceUrl(site.url) }));
+      .map(site => ({ ...site, image: site.image ? mediaUrl(site.image) : '' }));
+  }
+
+  siteHost(site: ShowcaseSite): string {
+    try {
+      return new URL(site.url).hostname.replace(/^www\./, '');
+    } catch {
+      return site.url;
+    }
   }
 
   showsWebsites(service: Service) {
-    return service.name === 'Websites' && this.safeWebsites.length > 0;
+    return service.name === 'Websites' && this.showcaseSites.length > 0;
   }
 
-  get activeWebsite(): SafeShowcaseSite | undefined {
-    return this.safeWebsites[this.websiteIndex];
+  get activeWebsite(): ShowcaseSite | undefined {
+    return this.showcaseSites[this.websiteIndex];
   }
 
   canCycleWebsites() {
-    return this.safeWebsites.length > 1;
+    return this.showcaseSites.length > 1;
   }
 
   getWebsitePosition() {
@@ -116,23 +114,20 @@ export class ServicesComponent implements OnChanges {
   }
 
   getWebsiteTotal() {
-    return this.safeWebsites.length;
+    return this.showcaseSites.length;
   }
 
   showPreviousWebsite() {
-    if (this.safeWebsites.length < 2) return;
-    this.websiteIndex = (this.websiteIndex - 1 + this.safeWebsites.length) % this.safeWebsites.length;
-    this.interactingWithWebsite = false;
+    if (this.showcaseSites.length < 2) return;
+    this.websiteIndex = (this.websiteIndex - 1 + this.showcaseSites.length) % this.showcaseSites.length;
   }
 
   showNextWebsite() {
-    if (this.safeWebsites.length < 2) return;
-    this.websiteIndex = (this.websiteIndex + 1) % this.safeWebsites.length;
-    this.interactingWithWebsite = false;
+    if (this.showcaseSites.length < 2) return;
+    this.websiteIndex = (this.websiteIndex + 1) % this.showcaseSites.length;
   }
 
   onServiceChange(serviceName: string) {
-    this.interactingWithWebsite = false;
     this.serviceChange.emit(serviceName);
   }
 

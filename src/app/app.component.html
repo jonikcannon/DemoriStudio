@@ -279,9 +279,8 @@
           <fieldset class="admin-card">
             <legend>Website showcase</legend>
             <p class="admin-card-hint">
-              Sites listed here appear as a scrollable list of live previews on the Websites service. Use full
-              https:// addresses. Some sites refuse to be embedded and will show blank -- visitors still get an
-              "Open site" link under each preview.
+              Sites listed here appear one at a time on the Websites service, as a screenshot that links to
+              the site. Use full https:// addresses. Without a screenshot the card shows the site's address.
             </p>
             <div class="about-feature-editor" *ngFor="let site of content.websites; let i = index">
               <div class="about-feature-editor-head">
@@ -294,6 +293,17 @@
               </div>
               <label>Title<input [(ngModel)]="site.title" [ngModelOptions]="{ standalone: true }" placeholder="e.g. Coastal Kayak Rentals"></label>
               <label>Address<input type="url" [(ngModel)]="site.url" [ngModelOptions]="{ standalone: true }" placeholder="https://example.com"></label>
+              <div class="media-field">
+                <label>Screenshot
+                  <input type="file" accept="image/*" (change)="uploadWebsiteImage($event, i)" [disabled]="!!contentMediaUploading['websiteImage-' + i]">
+                </label>
+                <div class="media-current" *ngIf="site.image">
+                  <img [src]="mediaUrl(site.image)" alt="">
+                  <div class="media-current-info"><b>Screenshot set</b><span>Choose a file above to replace it</span></div>
+                </div>
+                <p class="admin-inquiries-meta" *ngIf="contentMediaUploading['websiteImage-' + i]">Uploading…</p>
+                <button type="button" class="underlined" *ngIf="site.image" (click)="site.image = ''">Remove screenshot</button>
+              </div>
             </div>
             <button type="button" class="underlined" (click)="addWebsite()">Add website +</button>
           </fieldset>
