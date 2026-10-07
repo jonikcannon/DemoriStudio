@@ -6,6 +6,11 @@ set -euo pipefail
 #   bash scripts/deploy/deploy-remote.sh
 #   DEPLOY_TARGET=utctigers@192.168.4.60 bash scripts/deploy/deploy-remote.sh
 #   DEPLOY_TARGET=demori bash scripts/deploy/deploy-remote.sh    # via ~/.ssh/config
+#   bash scripts/deploy/deploy-remote.sh --restart               # npm run restart
+#
+# --restart skips the pull, install and build and only restarts the API under
+# PM2, then runs the same health check. A flag rather than an env var because
+# npm runs scripts through cmd.exe on Windows, where VAR=x cmd does not work.
 #
 # This is the manual path. It needs no GitHub runner and works today, which
 # makes it useful both before the runner is installed and as a fallback when
@@ -31,6 +36,10 @@ fi
 
 DEPLOY_FRONTEND="${DEPLOY_FRONTEND:-true}"
 RELOAD_NGINX="${RELOAD_NGINX:-true}"
+RESTART_ONLY="${RESTART_ONLY:-false}"
+if [[ "${1:-}" == "--restart" ]]; then
+  RESTART_ONLY=true
+fi
 
 ssh_run() {
   ssh "${SSH_OPTS[@]}" "${DEPLOY_TARGET}" "$@"
@@ -87,12 +96,24 @@ EOF
   exit 1
 fi
 
-ssh_run \
-  "APP_DIR='${APP_DIR}' DEPLOY_FRONTEND='${DEPLOY_FRONTEND}' RELOAD_NGINX='${RELOAD_NGINX}' bash '${APP_DIR}/scripts/deploy/deploy.sh'"
+if [[ "${RESTART_ONLY}" == "true" ]]; then
+  echo "==> Restarting API (no pull or build)"
+  ssh_run "pm2 restart demori-api --update-env"
+else
+  ssh_run \
+    "APP_DIR='${APP_DIR}' DEPLOY_FRONTEND='${DEPLOY_FRONTEND}' RELOAD_NGINX='${RELOAD_NGINX}' bash '${APP_DIR}/scripts/deploy/deploy.sh'"
+fi
 
 echo
 echo "==> Verifying the API responds"
-API_CODE="$(ssh_run "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/products || true")"
+# Poll rather than check once: right after a restart PM2 reports the process
+# online for a few seconds before it has bound :3000.
+API_CODE=""
+for attempt in $(seq 1 15); do
+  API_CODE="$(ssh_run "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/products || true")"
+  [[ "${API_CODE}" == "200" ]] && break
+  sleep 2
+done
 if [[ "${API_CODE}" == "200" ]]; then
   echo "    API healthy (HTTP ${API_CODE})"
 else
@@ -105,4 +126,8 @@ SITE_CODE="$(ssh_run "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/ |
 echo "    Site returned HTTP ${SITE_CODE:-no response}"
 
 echo
-echo "Deploy complete."
+if [[ "${RESTART_ONLY}" == "true" ]]; then
+  echo "Restart complete."
+else
+  echo "Deploy complete."
+fi

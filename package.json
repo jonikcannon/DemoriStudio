@@ -24,6 +24,7 @@
     "watermark:dry": "node scripts/watermark-media.js --dry-run",
     "watermark:restyle": "node scripts/watermark-media.js --restyle",
     "deploy": "bash scripts/deploy/deploy-remote.sh",
+    "restart": "bash scripts/deploy/deploy-remote.sh --restart",
     "media:names": "node scripts/apply-media-names.js",
     "media:rename": "node scripts/rename-r2-objects.js",
     "webify": "node scripts/webify-videos.js",
