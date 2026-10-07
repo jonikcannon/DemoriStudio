@@ -66,8 +66,19 @@
           <button type="button" class="service-media-nav" (click)="showNextWebsite()" aria-label="Next website">›</button>
         </div>
       </ng-container>
-      <ng-container *ngIf="!showsWebsites(service)">
-        <img *ngIf="service.mediaType !== 'video'" [src]="service.image" [alt]="service.title">
+      <div class="etsy-listings" *ngIf="showsEtsyListings(service)">
+        <a class="etsy-listing" *ngFor="let listing of etsyListings" [href]="listing.url" target="_blank" rel="noreferrer">
+          <img [src]="listing.image" [alt]="listing.imageAlt" loading="lazy">
+          <span class="etsy-listing-title">{{ listing.title }}</span>
+          <span class="etsy-listing-price">{{ formatEtsyPrice(listing) }}</span>
+        </a>
+      </div>
+      <ng-container *ngIf="!showsWebsites(service) && !showsEtsyListings(service)">
+        <img *ngIf="service.mediaType !== 'video' && service.image" [src]="service.image" [alt]="service.title">
+        <a class="service-media-placeholder" *ngIf="service.mediaType !== 'video' && !service.image && service.link" [href]="service.link" target="_blank" rel="noreferrer">
+          <span class="service-media-placeholder-icon" aria-hidden="true">{{ service.icon }}</span>
+          <span>{{ service.linkLabel || 'Visit shop' }} ↗</span>
+        </a>
         <video *ngIf="service.mediaType === 'video'" [src]="getServiceMediaSource(service)" [poster]="service.poster || null" autoplay muted loop playsinline preload="metadata" [attr.aria-label]="service.title"></video>
         <div class="service-media-cycle" *ngIf="canCycleAerialVideos(service)">
           <button type="button" class="service-media-nav" (click)="showPreviousAerialVideo()" aria-label="Previous aerial video">‹</button>

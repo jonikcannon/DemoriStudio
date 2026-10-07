@@ -1,0 +1,140 @@
+<p class="etsy-banner" *ngIf="connectResult" [class.etsy-banner-error]="!connectResult.ok" role="status">{{ connectResult.message }}</p>
+
+<p class="etsy-muted" *ngIf="loading && !status">Checking Etsy connection…</p>
+
+<fieldset class="etsy-card" *ngIf="status && !status.configured">
+  <legend>Etsy</legend>
+  <p>Etsy isn't configured on the server. Set <code>ETSY_API_KEYSTRING</code>, <code>ETSY_SHARED_SECRET</code>, and <code>ETSY_SHOP_NAME</code> in its <code>.env</code> and restart it.</p>
+</fieldset>
+
+<fieldset class="etsy-card" *ngIf="status?.configured && !status?.connected">
+  <legend>Connect your Etsy shop</legend>
+  <p>Creating listings needs your permission on Etsy, once. You'll sign in to Etsy as the shop owner, approve access, and come straight back here.</p>
+  <p class="etsy-muted">Etsy must have this exact callback URL registered for the app: <code>{{ status?.redirectUri }}</code></p>
+  <button class="etsy-primary" type="button" (click)="connect()" [disabled]="connecting">{{ connecting ? 'Opening Etsy…' : 'Connect Etsy' }} <span>→</span></button>
+</fieldset>
+
+<ng-container *ngIf="status?.connected">
+  <div class="etsy-connected">
+    <span>Etsy connected<ng-container *ngIf="status?.connectedAt"> since {{ status?.connectedAt | date: 'mediumDate' }}</ng-container></span>
+    <button type="button" class="etsy-link" (click)="disconnect()">Disconnect</button>
+  </div>
+
+  <div class="etsy-result" *ngIf="created" role="status">
+    <b>{{ created.state === 'active' ? 'Listing published on Etsy.' : 'Draft saved on Etsy.' }}</b>
+    <a [href]="created.state === 'active' ? created.url : created.editUrl" target="_blank" rel="noreferrer">
+      {{ created.state === 'active' ? 'View listing' : 'Review and publish on Etsy' }} ↗
+    </a>
+    <ul *ngIf="created.warnings.length"><li *ngFor="let warning of created.warnings">{{ warning }}</li></ul>
+  </div>
+
+  <p class="etsy-muted" *ngIf="!options && loading">Loading your shop's profiles…</p>
+
+  <form class="etsy-import" *ngIf="options" (ngSubmit)="importFromMakerWorld()">
+    <label>Start from a MakerWorld model <span class="etsy-optional">optional -- fills in what it can</span>
+      <div class="etsy-import-row">
+        <input [(ngModel)]="makerworldUrl" name="makerworldUrl" type="url" placeholder="https://makerworld.com/en/models/123456">
+        <button class="etsy-secondary" type="submit" [disabled]="!makerworldUrl.trim() || importing">{{ importing ? 'Getting info…' : 'Get info' }}</button>
+      </div>
+    </label>
+
+    <div class="etsy-imported" *ngIf="imported" [class.etsy-imported-blocked]="!imported.commercialUse">
+      <div>
+        <b>Imported "{{ imported.title }}"</b> by
+        <a [href]="imported.creator.url || imported.url" target="_blank" rel="noreferrer">{{ imported.creator.name }}</a>
+        · <a [href]="imported.url" target="_blank" rel="noreferrer">view on MakerWorld ↗</a>
+        <button type="button" class="etsy-link" (click)="clearImport()">Clear</button>
+      </div>
+      <p>License: <b>{{ imported.license.label }}</b>
+        <ng-container *ngFor="let original of imported.originals"> · remix of "{{ original.title }}" ({{ original.license.label }})</ng-container>
+      </p>
+      <p *ngIf="imported.commercialUse">This license allows selling prints. A credit line has been added to the description{{ imported.attribution ? '' : ' (not required for this license)' }}.</p>
+      <ng-container *ngIf="!imported.commercialUse">
+        <p>This license does <b>not</b> allow selling prints. Only list it if the creator has given you commercial permission (for example a commercial license or written OK).</p>
+        <label class="etsy-checkbox"><input type="checkbox" [(ngModel)]="commercialPermission" name="commercialPermission"> I have the creator's permission to sell prints of this design</label>
+      </ng-container>
+      <p class="etsy-muted">Photos are the creator's; swap in photos of your own print when you can.</p>
+      <p class="etsy-print-files">
+        <a [href]="imported.url" target="_blank" rel="noreferrer">Download files on MakerWorld ↗</a>
+        <ng-container *ngIf="status?.printInboxPath; else noInbox">
+          and save the zip to <code>{{ status?.printInboxPath }}</code> -- it unpacks into its own folder on the print share.
+        </ng-container>
+        <ng-template #noInbox>(sign in to MakerWorld; pick a print profile and use its Download button).</ng-template>
+      </p>
+    </div>
+  </form>
+
+  <form class="etsy-form" *ngIf="options" (ngSubmit)="submit()">
+    <div class="etsy-photos">
+      <label class="etsy-dropzone" *ngIf="photos.length < 10">
+        <input type="file" accept="image/jpeg,image/png,image/gif" multiple (change)="pickPhotos($event)">
+        <b>Add photos</b>
+        <span>JPG, PNG, or GIF · up to 10 · first one is the main image</span>
+      </label>
+      <div class="etsy-thumbs" *ngIf="photos.length">
+        <figure *ngFor="let photo of photos; let i = index" [class.etsy-primary-photo]="i === 0">
+          <img [src]="photo.preview" [alt]="'Photo ' + (i + 1)">
+          <figcaption>
+            <span *ngIf="i === 0">Main</span>
+            <button type="button" *ngIf="i > 0" (click)="makePrimary(i)">Make main</button>
+            <button type="button" (click)="removePhoto(i)" [attr.aria-label]="'Remove photo ' + (i + 1)">Remove</button>
+          </figcaption>
+        </figure>
+      </div>
+    </div>
+
+    <div class="etsy-fields">
+      <label>Title<input [(ngModel)]="listing.title" name="title" maxlength="140" required placeholder="e.g. PS5 Controller Wall Mount"></label>
+      <label>Description<textarea [(ngModel)]="listing.description" name="description" required placeholder="What it is, size, color options, how it mounts…"></textarea></label>
+      <div class="etsy-two-up">
+        <label>Price (USD)<input [(ngModel)]="listing.price" name="price" type="number" min="0.2" step="0.01" required></label>
+        <label>Quantity<input [(ngModel)]="listing.quantity" name="quantity" type="number" min="1" max="999" step="1" required></label>
+      </div>
+
+      <label class="etsy-category">Category
+        <input [ngModel]="categoryQuery" (ngModelChange)="onCategoryInput($event)" name="category" autocomplete="off" placeholder="Search, e.g. wall mount, planter, desk organizer">
+        <ul class="etsy-category-results" *ngIf="categoryResults.length">
+          <li *ngFor="let category of categoryResults"><button type="button" (click)="chooseCategory(category)">{{ category.path }}</button></li>
+        </ul>
+      </label>
+      <div class="etsy-chips" *ngIf="options.usedCategories.length && !selectedCategory">
+        <span>Used in your shop:</span>
+        <button type="button" *ngFor="let category of options.usedCategories.slice(0, 8)" (click)="chooseCategory(category)" [title]="category.path">{{ category.path.split(' > ').pop() }}</button>
+      </div>
+
+      <div class="etsy-two-up">
+        <label>Tags <span class="etsy-optional">comma-separated, up to 13</span><input [(ngModel)]="listing.tags" name="tags" placeholder="wall mount, gamer gift, 3d printed"></label>
+        <label>Materials <span class="etsy-optional">optional</span><input [(ngModel)]="listing.materials" name="materials" placeholder="PLA"></label>
+      </div>
+
+      <div class="etsy-three-up">
+        <label>Shipping profile
+          <select [(ngModel)]="listing.shippingProfileId" name="shippingProfileId" required>
+            <option *ngFor="let option of options.shippingProfiles" [ngValue]="option.id">{{ option.label }}</option>
+          </select>
+        </label>
+        <label>Processing time
+          <select [(ngModel)]="listing.processingProfileId" name="processingProfileId" required>
+            <option *ngFor="let option of options.processingProfiles" [ngValue]="option.id">{{ option.label }}</option>
+          </select>
+        </label>
+        <label>Returns
+          <select [(ngModel)]="listing.returnPolicyId" name="returnPolicyId" required>
+            <option *ngFor="let option of options.returnPolicies" [ngValue]="option.id">{{ option.label }}</option>
+          </select>
+        </label>
+      </div>
+
+      <p class="etsy-muted">Listed as made by you, made to order, a finished item (not a supply) -- the same as your current listings.</p>
+
+      <label class="etsy-checkbox"><input type="checkbox" [(ngModel)]="listing.publish" name="publish"> Publish now <span class="etsy-optional">otherwise it's saved as a draft for you to review on Etsy ($0.20 Etsy fee when published)</span></label>
+
+      <p class="etsy-error" *ngIf="imported && !imported.commercialUse && !commercialPermission">Confirm the creator's commercial permission above to continue.</p>
+      <button class="etsy-primary" type="submit" [disabled]="!canSubmit">
+        {{ submitting ? 'Sending to Etsy…' : (listing.publish ? 'Create and publish' : 'Save draft to Etsy') }} <span>→</span>
+      </button>
+    </div>
+  </form>
+</ng-container>
+
+<p class="etsy-error" *ngIf="error">{{ error }}</p>

@@ -25,7 +25,24 @@ export type Service = {
   // there instead of scrolling to the on-site inquiry form.
   link?: string;
   linkLabel?: string;
+  // Shows the live Etsy shop listings (GET /api/etsy/listings) in place of the
+  // image, falling back to it -- or to a shop link panel -- when there are none.
+  etsyListings?: boolean;
 };
+
+export type EtsyListing = {
+  id: string;
+  title: string;
+  price: number | null;
+  currency: string;
+  url: string;
+  image: string;
+  imageAlt: string;
+};
+
+// Shared across component instances: the Services page is re-created each
+// time it's opened, and the listings only change when the shop does.
+let etsyListingsRequest: Promise<EtsyListing[]> | null = null;
 
 @Component({
   selector: 'app-services',
@@ -64,7 +81,10 @@ export class ServicesComponent implements OnChanges {
     private readonly sanitizer: DomSanitizer
   ) {}
 
+  etsyListings: EtsyListing[] = [];
+
   ngOnChanges(changes: SimpleChanges) {
+    if (changes['services'] && this.services.some(service => service.etsyListings)) this.loadEtsyListings();
     if (changes['websites']) this.buildSafeWebsites();
     if (!changes['aerialVideos']) return;
     if (!this.aerialVideos.length) {
@@ -220,5 +240,29 @@ export class ServicesComponent implements OnChanges {
     const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' });
     this.successBanner?.nativeElement.focus({ preventScroll: true });
+  }
+
+  showsEtsyListings(service: Service): boolean {
+    return Boolean(service.etsyListings) && this.etsyListings.length > 0;
+  }
+
+  formatEtsyPrice(listing: EtsyListing): string {
+    if (listing.price === null) return '';
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: listing.currency || 'USD' }).format(listing.price);
+  }
+
+  private loadEtsyListings() {
+    if (!etsyListingsRequest) {
+      etsyListingsRequest = fetch(`${this.api}/etsy/listings`)
+        .then(response => response.ok ? response.json() : { listings: [] })
+        .then(body => Array.isArray(body?.listings) ? body.listings as EtsyListing[] : [])
+        .catch(() => []);
+      // A failed or empty load shouldn't stick for the whole visit.
+      etsyListingsRequest.then(listings => { if (!listings.length) etsyListingsRequest = null; });
+    }
+    etsyListingsRequest.then(listings => {
+      this.etsyListings = listings;
+      this.changeDetector.markForCheck();
+    });
   }
 }

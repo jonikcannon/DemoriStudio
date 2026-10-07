@@ -8,9 +8,10 @@ import { AboutComponent } from './about/about.component';
 import { Product, ProductEditPayload, ProductOrderPayload, ProductsComponent } from './products/products.component';
 import { BookingComponent, BookingDateRequest, BookingRequest, BookingSlot } from './booking/booking.component';
 import { BookingLookupComponent, BookingLookupResult } from './booking-lookup/booking-lookup.component';
+import { AdminEtsyComponent } from './admin-etsy/admin-etsy.component';
 import { CartComponent, CartItem } from './cart/cart.component';
 import { getApiBaseUrl, mediaUrl } from './media-url';
-import { defaultSiteContent, NavKey, SiteContent, SiteSection } from './site-content';
+import { defaultSiteContent, ETSY_SHOP_URL, NavKey, SiteContent, SiteSection } from './site-content';
 
 type Work = { id?: string; image: string; title: string; type: string; size?: string; price?: number; mediaType?: 'image' | 'video' };
 // `description` is written by hand in storage/media/descriptions.json and
@@ -31,7 +32,7 @@ type Inquiry = {
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, FormsModule, WorkComponent, GalleryComponent, ServicesComponent, AboutComponent, ProductsComponent, CartComponent, BookingComponent, BookingLookupComponent],
+  imports: [CommonModule, FormsModule, WorkComponent, GalleryComponent, ServicesComponent, AboutComponent, ProductsComponent, CartComponent, BookingComponent, BookingLookupComponent, AdminEtsyComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.css'
 })
@@ -72,9 +73,11 @@ export class AppComponent implements OnInit {
     return this.content.hero.video ? 'Background video' : 'Aerial drone footage: surf breaking over a rocky shoreline';
   }
   activeSection: SiteSection = 'home';
-  readonly navKeys: NavKey[] = ['catalog', 'services', 'booking', 'about'];
+  readonly navKeys: NavKey[] = ['catalog', 'services', 'booking', 'about', 'shop'];
+  readonly etsyShopUrl = ETSY_SHOP_URL;
   adminOpen = false;
-  adminView: 'content' | 'products' | 'inquiries' | 'bookings' = 'content';
+  adminView: 'content' | 'products' | 'inquiries' | 'bookings' | 'etsy' = 'content';
+  etsyConnectResult: { ok: boolean; message: string } | null = null;
   private changeDetector: ChangeDetectorRef;
   private ngZone: NgZone;
   constructor(changeDetector: ChangeDetectorRef, ngZone: NgZone) {
@@ -269,6 +272,25 @@ export class AppComponent implements OnInit {
         { label: 'Ongoing updates and hosting', price: '$40 - $100 / month', details: 'Content updates, backups, and uptime monitoring after launch.' },
         { label: 'Domain and email setup', price: '$50', details: 'One-time setup for a custom domain and business email.' }
       ]
+    },
+    {
+      name: '3D Printing',
+      icon: '◇',
+      title: '3D-printed pieces from the Etsy shop',
+      text: "Browse 3D-printed designs from Jonik's 3D Print Shop, live from Etsy. Ordering, payment, and shipping are handled there, and custom requests are welcome.",
+      // Live listings fill the media panel; with none (Etsy down or not
+      // configured) an empty image shows a shop link panel instead.
+      image: '',
+      etsyListings: true,
+      mediaType: 'image',
+      pricingTitle: 'How ordering works',
+      tiers: [
+        { label: 'Shop listings', price: 'Priced per item', details: 'Click any item to see its options, shipping, and checkout on Etsy.' },
+        { label: 'Custom requests', price: 'Quoted per design', details: 'Message the shop on Etsy with your idea for a custom print.' }
+      ],
+      addons: [],
+      link: ETSY_SHOP_URL,
+      linkLabel: 'Shop on Etsy'
     }
   ];
   work: Work[] = [
@@ -417,6 +439,26 @@ export class AppComponent implements OnInit {
     void this.loadProducts();
     this.initGoogleSignIn();
     void this.handleBookingCheckoutReturn();
+    this.handleEtsyConnectReturn();
+  }
+
+  // The Etsy OAuth callback (/api/etsy/oauth/callback) lands back here with
+  // ?etsy=connected or ?etsy=error&etsy_reason=...; reopen admin on the Etsy tab.
+  private handleEtsyConnectReturn() {
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get('etsy');
+    if (status !== 'connected' && status !== 'error') return;
+
+    const url = new URL(window.location.href);
+    url.searchParams.delete('etsy');
+    url.searchParams.delete('etsy_reason');
+    window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+
+    this.etsyConnectResult = status === 'connected'
+      ? { ok: true, message: 'Etsy connected. You can now create listings.' }
+      : { ok: false, message: `Etsy connection failed: ${params.get('etsy_reason') || 'unknown error'}` };
+    this.adminView = 'etsy';
+    this.openAdmin();
   }
 
   // Stripe sends the visitor back to success_url/cancel_url on
@@ -923,7 +965,7 @@ export class AppComponent implements OnInit {
       void this.loadInquiries();
     }
   }
-  setAdminView(view: 'content' | 'products' | 'inquiries' | 'bookings') {
+  setAdminView(view: 'content' | 'products' | 'inquiries' | 'bookings' | 'etsy') {
     this.adminView = view;
     if (view === 'products') this.productsPage = 1;
     if (view === 'content' && this.adminToken) void this.loadAdminContent();

@@ -42,6 +42,9 @@ const fulfilment = require('./fulfilment');
 const bookingStore = require('./booking');
 const ics = require('./ics');
 const siteContent = require('./content');
+const etsy = require('./etsy');
+const etsySeller = require('./etsy-seller');
+const makerworld = require('./makerworld');
 orderStore.ensureStore();
 bookingStore.ensureStore();
 
@@ -989,6 +992,100 @@ app.get('/api/content', (req, res) => {
   const content = siteContent.readContent();
   const { revision, updatedAt, ...publicContent } = content;
   res.json(publicContent);
+});
+
+// Live 3D printing listings for the Services page. Served from etsy.js's
+// cache, so visitors never hit Etsy's rate limit. An unconfigured or failing
+// Etsy just yields an empty list, and the page falls back to a plain shop link.
+app.get('/api/etsy/listings', async (req, res) => {
+  if (!etsy.isConfigured()) return res.json({ listings: [] });
+  try {
+    const listings = await etsy.getListings();
+    res.set('Cache-Control', 'public, max-age=300');
+    res.json({ listings });
+  } catch (error) {
+    console.error('Etsy listings unavailable.', error.message || error);
+    res.status(502).json({ error: 'Etsy listings are unavailable right now.', listings: [] });
+  }
+});
+
+// --- Etsy listing creation (admin). See etsy-seller.js for the OAuth flow. ---
+function sendEtsyError(res, error) {
+  if (error instanceof etsySeller.EtsyNotConnectedError) {
+    return res.status(409).json({ error: error.message, notConnected: true });
+  }
+  console.error('Etsy admin request failed.', error.message || error);
+  return res.status(502).json({ error: error.message || 'Etsy request failed.' });
+}
+
+app.get('/api/admin/etsy/status', auth, (req, res) => {
+  res.json(etsySeller.status());
+});
+
+app.post('/api/admin/etsy/connect', auth, (req, res) => {
+  try {
+    res.json({ url: etsySeller.startConnect() });
+  } catch (error) {
+    sendEtsyError(res, error);
+  }
+});
+
+app.post('/api/admin/etsy/disconnect', auth, (req, res) => {
+  etsySeller.disconnect();
+  res.json(etsySeller.status());
+});
+
+// Etsy sends the shop owner's browser here after the consent screen. There is
+// no admin JWT on this request; the one-time `state` from /connect is what
+// ties it to an admin-initiated connection.
+app.get('/api/etsy/oauth/callback', async (req, res) => {
+  const back = new URL(origin);
+  try {
+    if (req.query.error) throw new Error(String(req.query.error_description || req.query.error));
+    await etsySeller.finishConnect({ code: req.query.code, state: req.query.state });
+    back.searchParams.set('etsy', 'connected');
+  } catch (error) {
+    console.error('Etsy connection failed.', error.message || error);
+    back.searchParams.set('etsy', 'error');
+    back.searchParams.set('etsy_reason', String(error.message || 'Connection failed.').slice(0, 200));
+  }
+  res.redirect(302, back.toString());
+});
+
+app.get('/api/admin/etsy/options', auth, async (req, res) => {
+  try {
+    res.json(await etsySeller.options());
+  } catch (error) {
+    sendEtsyError(res, error);
+  }
+});
+
+app.get('/api/admin/etsy/categories', auth, async (req, res) => {
+  try {
+    res.json({ categories: await etsySeller.searchCategories(req.query.q) });
+  } catch (error) {
+    sendEtsyError(res, error);
+  }
+});
+
+// Reads a MakerWorld model page to prefill the Etsy listing form.
+app.get('/api/admin/makerworld/import', auth, async (req, res) => {
+  try {
+    res.json(await makerworld.importModel(req.query.url));
+  } catch (error) {
+    if (error instanceof makerworld.MakerWorldError) return res.status(422).json({ error: error.message });
+    console.error('MakerWorld import failed.', error.message || error);
+    res.status(502).json({ error: 'Could not reach MakerWorld. Try again in a minute.' });
+  }
+});
+
+app.post('/api/admin/etsy/listings', auth, async (req, res) => {
+  try {
+    res.status(201).json(await etsySeller.createListing(req.body));
+  } catch (error) {
+    if (error instanceof etsySeller.ListingInputError) return res.status(400).json({ error: error.message });
+    sendEtsyError(res, error);
+  }
 });
 
 app.post('/api/admin/login', rateLimit({ windowMs: 900000, max: 8, message: { error: 'Too many attempts. Try again later.' } }), async (req, res) => {

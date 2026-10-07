@@ -21,7 +21,10 @@ const defaults = {
     catalog: { label: 'Catalog', visible: true },
     services: { label: 'Services', visible: true },
     booking: { label: 'Book', visible: true },
-    about: { label: 'About', visible: true }
+    about: { label: 'About', visible: true },
+    // External link to the Etsy 3D printing shop (ETSY_SHOP_URL in
+    // src/app/site-content.ts); only its label and visibility are editable.
+    shop: { label: '3D Prints', visible: true }
   },
   hero: {
     eyebrow: 'Photography studio',
@@ -136,7 +139,7 @@ function validateContent(input) {
 
   const navigation = input.navigation;
   if (!isPlainObject(navigation)) throw new Error('navigation must be an object.');
-  assertKeys(navigation, ['catalog', 'services', 'booking', 'about'], 'navigation');
+  assertKeys(navigation, ['catalog', 'services', 'booking', 'about', 'shop'], 'navigation');
   for (const key of Object.keys(navigation)) {
     const item = navigation[key];
     if (!isPlainObject(item)) throw new Error(`navigation.${key} is invalid.`);

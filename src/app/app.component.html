@@ -5,6 +5,7 @@
     <a *ngIf="content.navigation.services.visible" [class.active]="activeSection === 'services'" (click)="activeSection = 'services'; menuOpen = false">{{ content.navigation.services.label }}</a>
     <a *ngIf="content.navigation.booking.visible" [class.active]="activeSection === 'booking'" (click)="openBooking()">{{ content.navigation.booking.label }}</a>
     <a *ngIf="content.navigation.about.visible" [class.active]="activeSection === 'about'" (click)="activeSection = 'about'; menuOpen = false">{{ content.navigation.about.label }}</a>
+    <a *ngIf="content.navigation.shop?.visible" [href]="etsyShopUrl" target="_blank" rel="noreferrer" (click)="menuOpen = false">{{ content.navigation.shop.label }} ↗</a>
   </nav>
   <button class="cart-quick" type="button" (click)="openCartView()">Cart <span>{{ activeCartCount }}</span></button>
   <button class="hamburger" (click)="menuOpen = !menuOpen">☰</button>
@@ -161,7 +162,10 @@
         <button type="button" [class.active]="adminView === 'products'" (click)="setAdminView('products')">Products</button>
         <button type="button" [class.active]="adminView === 'inquiries'" (click)="setAdminView('inquiries')">Inquiries <span>{{ inquiries.length }}</span></button>
         <button type="button" [class.active]="adminView === 'bookings'" (click)="setAdminView('bookings')">Bookings <span>{{ adminBookings.length }}</span></button>
+        <button type="button" [class.active]="adminView === 'etsy'" (click)="setAdminView('etsy')">Etsy</button>
       </div>
+
+      <app-admin-etsy *ngIf="adminView === 'etsy'" [adminToken]="adminToken" [connectResult]="etsyConnectResult"></app-admin-etsy>
 
       <section class="admin-site-content" *ngIf="adminView === 'content'">
         <form (ngSubmit)="saveSiteContent()">
@@ -571,4 +575,4 @@
   </aside>
 </div>
 
-<footer><a class="brand" (click)="activeSection = 'home'; menuOpen = false"><img src="assets/brand/logo-mark-reversed.svg" alt="" class="brand-mark">{{ content.site.brand }}</a><p>© 2026 {{ content.site.brand }}. {{ content.site.footerText }}</p><div><a (click)="openAdmin()">Admin</a><a *ngFor="let link of content.site.socialLinks" [href]="link.url" target="_blank" rel="noreferrer">{{ link.label }}</a></div></footer>
+<footer><a class="brand" (click)="activeSection = 'home'; menuOpen = false"><img src="assets/brand/logo-mark-reversed.svg" alt="" class="brand-mark">{{ content.site.brand }}</a><p>© 2026 {{ content.site.brand }}. {{ content.site.footerText }}</p><div><a (click)="openAdmin()">Admin</a><a [href]="etsyShopUrl" target="_blank" rel="noreferrer">Etsy</a><a *ngFor="let link of content.site.socialLinks" [href]="link.url" target="_blank" rel="noreferrer">{{ link.label }}</a></div></footer>

@@ -1,6 +1,11 @@
 export type SiteSection = 'home' | 'products' | 'gallery' | 'services' | 'about' | 'contact' | 'booking';
 
-export type NavKey = 'catalog' | 'services' | 'booking' | 'about';
+export type NavKey = 'catalog' | 'services' | 'booking' | 'about' | 'shop';
+
+// The 3D printing side of the business is sold through Etsy, not this site's
+// own Stripe cart, so the nav item, footer link, and 3D Printing service card
+// all point here.
+export const ETSY_SHOP_URL = 'https://www.etsy.com/shop/Joniks3DPrintShop';
 
 export type SiteContent = {
   site: {
@@ -59,7 +64,8 @@ export const defaultSiteContent: SiteContent = {
     catalog: { label: 'Catalog', visible: true },
     services: { label: 'Services', visible: true },
     booking: { label: 'Book', visible: true },
-    about: { label: 'About', visible: true }
+    about: { label: 'About', visible: true },
+    shop: { label: '3D Prints', visible: true }
   },
   hero: {
     eyebrow: 'Photography studio',

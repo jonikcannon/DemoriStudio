@@ -263,6 +263,75 @@
   background: #e8e3d7;
 }
 
+.service-media-placeholder {
+  height: clamp(280px, 42vw, 560px);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  border: 1px solid #cdc8bd;
+  background: #e8e3d7;
+  color: var(--color-primary);
+  text-decoration: none;
+  font-size: 11px;
+  font-weight: bold;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.service-media-placeholder:hover {
+  background: #dcd7ca;
+}
+
+.service-media-placeholder-icon {
+  font-size: 64px;
+  line-height: 1;
+}
+
+.etsy-listings {
+  height: clamp(280px, 42vw, 560px);
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  align-content: start;
+  gap: 14px;
+  padding-right: 6px;
+}
+
+.etsy-listing {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Beats the generic `.service-media img` sizing, which is for one full-panel image. */
+.service-media .etsy-listing img {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  object-fit: cover;
+  transition: opacity 0.2s;
+}
+
+.etsy-listing:hover img {
+  opacity: 0.85;
+}
+
+.etsy-listing-title {
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.etsy-listing-price {
+  font-size: 11px;
+  font-weight: bold;
+  letter-spacing: 0.08em;
+}
+
 .services-contact {
   margin-top: 64px;
   padding-top: 36px;
@@ -355,8 +424,13 @@
   }
 
   .service-media img,
-  .service-media video {
+  .service-media video,
+  .service-media-placeholder {
     height: 320px;
+  }
+
+  .etsy-listings {
+    height: 420px;
   }
 }
 
@@ -380,8 +454,14 @@
   }
 
   .service-media img,
-  .service-media video {
+  .service-media video,
+  .service-media-placeholder {
     height: 240px;
+  }
+
+  .etsy-listings {
+    height: 380px;
+    grid-template-columns: repeat(2, 1fr);
   }
 
   .services-contact {

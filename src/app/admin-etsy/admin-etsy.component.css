@@ -1,0 +1,432 @@
+/* Mirrors the admin panel's form styles in app.component.css, which are
+   scoped to AppComponent and so don't reach into this component. */
+:host {
+  display: block;
+  grid-column: 1 / -1;
+}
+
+.etsy-card {
+  border: 1px solid #e3ded0;
+  border-radius: 14px;
+  background: #fbfaf6;
+  padding: 22px 28px;
+  margin: 0 0 22px;
+  min-width: 0;
+}
+
+.etsy-card legend {
+  padding: 0 10px;
+  margin-left: -10px;
+  font-family: Georgia, serif;
+  font-size: 20px;
+  color: var(--color-primary);
+}
+
+.etsy-card p {
+  font-size: 14px;
+  line-height: 1.6;
+  max-width: 640px;
+}
+
+code {
+  font-size: 12px;
+  background: #ece7d9;
+  padding: 2px 5px;
+  border-radius: 4px;
+  word-break: break-all;
+}
+
+.etsy-muted {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #8a8d84;
+}
+
+.etsy-banner,
+.etsy-result {
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin: 0 0 18px;
+  font-size: 14px;
+  background: #e3ecdf;
+  color: #2b4a2c;
+}
+
+.etsy-banner-error {
+  background: #f6e1dc;
+  color: #9c3d30;
+}
+
+.etsy-result a {
+  margin-left: 12px;
+  color: inherit;
+  font-weight: bold;
+}
+
+.etsy-result ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: #8a5a1c;
+}
+
+.etsy-connected {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #5d7a5e;
+}
+
+.etsy-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: #8a8d84;
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.etsy-import {
+  margin-bottom: 8px;
+}
+
+.etsy-import-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.etsy-import-row input {
+  flex: 1;
+}
+
+.etsy-secondary {
+  flex: none;
+  border: 1px solid var(--color-primary);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--color-primary);
+  padding: 11px 16px;
+  font-size: 10px;
+  font-weight: bold;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.etsy-secondary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.etsy-imported {
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin: -6px 0 22px;
+  font-size: 13px;
+  line-height: 1.5;
+  background: #e3ecdf;
+  color: #2b4a2c;
+}
+
+.etsy-imported-blocked {
+  background: #f8ecd9;
+  color: #6e4a12;
+}
+
+.etsy-imported p {
+  margin: 6px 0 0;
+}
+
+.etsy-imported a {
+  color: inherit;
+}
+
+.etsy-imported .etsy-link {
+  margin-left: 10px;
+}
+
+.etsy-print-files {
+  font-weight: bold;
+}
+
+.etsy-print-files code {
+  font-weight: normal;
+}
+
+.etsy-imported .etsy-checkbox {
+  margin: 10px 0 0;
+}
+
+.etsy-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 28px;
+}
+
+.etsy-dropzone {
+  min-height: 180px;
+  border: 1.5px dashed #a3ab9d;
+  border-radius: 14px;
+  background: #e5e1d7;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  cursor: pointer;
+  margin-bottom: 14px;
+  padding: 16px;
+}
+
+.etsy-dropzone:hover {
+  border-color: var(--color-primary);
+  background: #ddd8cb;
+}
+
+.etsy-dropzone input {
+  display: none;
+}
+
+.etsy-dropzone b {
+  font-family: Georgia, serif;
+  font-size: 22px;
+  font-weight: 400;
+}
+
+.etsy-dropzone span {
+  margin-top: 8px;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+}
+
+.etsy-thumbs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 10px;
+}
+
+.etsy-thumbs figure {
+  margin: 0;
+  border: 1px solid #e3ded0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.etsy-thumbs .etsy-primary-photo {
+  border-color: var(--color-primary);
+}
+
+.etsy-thumbs img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  display: block;
+}
+
+.etsy-thumbs figcaption {
+  display: flex;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 5px 7px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.etsy-thumbs figcaption button {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: #8a8d84;
+  cursor: pointer;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.etsy-thumbs figcaption button:hover {
+  color: var(--color-text);
+}
+
+label {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  font-weight: bold;
+  margin-bottom: 19px;
+}
+
+input,
+select,
+textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  border: 0;
+  border-bottom: 1px solid #93958d;
+  background: transparent;
+  padding: 10px 0;
+  margin-top: 7px;
+  font: 15px Arial, Helvetica, sans-serif;
+  color: var(--color-primary);
+  outline: none;
+}
+
+textarea {
+  height: 120px;
+  resize: vertical;
+}
+
+.etsy-optional {
+  text-transform: none;
+  letter-spacing: 0;
+  color: #9a9c94;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.etsy-two-up {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+
+.etsy-three-up {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.etsy-category {
+  position: relative;
+}
+
+.etsy-category-results {
+  position: absolute;
+  z-index: 3;
+  left: 0;
+  right: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  margin: 4px 0 0;
+  padding: 4px;
+  list-style: none;
+  background: #fff;
+  border: 1px solid #e3ded0;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(20, 20, 16, 0.14);
+}
+
+.etsy-category-results button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: none;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font: 13px Arial, Helvetica, sans-serif;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.etsy-category-results button:hover {
+  background: #f1eee5;
+}
+
+.etsy-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: -8px 0 20px;
+  font-size: 11px;
+  color: #8a8d84;
+}
+
+.etsy-chips button {
+  border: 1px solid #d8d2c3;
+  border-radius: 999px;
+  background: #fbfaf6;
+  padding: 4px 10px;
+  font-size: 11px;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.etsy-chips button:hover {
+  border-color: var(--color-primary);
+}
+
+.etsy-checkbox {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 13px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: normal;
+}
+
+.etsy-checkbox input {
+  display: inline-block;
+  width: auto;
+  margin: 0;
+}
+
+.etsy-primary {
+  background: var(--color-primary);
+  color: white;
+  border: 0;
+  border-radius: 9px;
+  padding: 15px 19px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 10px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.etsy-primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.etsy-primary span {
+  font-size: 17px;
+  margin-left: 20px;
+}
+
+.etsy-error {
+  color: #9c3d30;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+@media (max-width: 900px) {
+  .etsy-form,
+  .etsy-three-up {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 700px) {
+  .etsy-card {
+    padding: 18px;
+  }
+
+  .etsy-two-up {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+}
