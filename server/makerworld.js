@@ -9,8 +9,31 @@
 // allowed under some licenses. commercialUse() is the single source of truth,
 // used both to warn in the form and to refuse the listing server-side.
 
-const sharp = require('sharp');
+const fs = require('fs');
 const etsy = require('./etsy');
+
+// sharp is loaded on first use, not at startup: its prebuilt libvips needs
+// SSE4.2, and on a CPU without it (the production box is a 2011 AMD A6-3620)
+// require('sharp') kills the whole process with SIGILL -- uncatchable, no log
+// line -- which took the API down. Checking the CPU first turns that into an
+// ordinary error on the one feature that needs it.
+let sharpModule;
+function loadSharp() {
+  if (sharpModule) return sharpModule;
+  if (process.platform === 'linux' && process.arch === 'x64') {
+    let cpuinfo = '';
+    try {
+      cpuinfo = fs.readFileSync('/proc/cpuinfo', 'utf8');
+    } catch {
+      // Can't tell; fall through and let sharp try.
+    }
+    if (cpuinfo && !/\bsse4_2\b/.test(cpuinfo)) {
+      throw new MakerWorldError('Photo import is unavailable: this server\'s CPU is too old for the image library (needs SSE4.2).');
+    }
+  }
+  sharpModule = require('sharp');
+  return sharpModule;
+}
 
 const USER_AGENT = 'DemoriStudios-Admin/1.0 (+https://demori-studios.com)';
 const IMAGE_HOSTS = ['makerworld.bblmw.com', 'public-cdn.bblmw.com'];
@@ -156,6 +179,7 @@ async function downloadImage(value, index) {
   if (declared > MAX_DOWNLOAD_BYTES) throw new MakerWorldError(`Photo ${index + 1} is too large.`);
   const input = Buffer.from(await response.arrayBuffer());
   if (input.length > MAX_DOWNLOAD_BYTES) throw new MakerWorldError(`Photo ${index + 1} is too large.`);
+  const sharp = loadSharp();
   try {
     const buffer = await sharp(input)
       .rotate()
