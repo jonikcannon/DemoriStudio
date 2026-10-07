@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { WorkComponent } from './work/work.component';
 import { GalleryComponent } from './gallery/gallery.component';
 import { Service, ServicesComponent } from './services/services.component';
+import { ContactFormComponent } from './contact-form/contact-form.component';
 import { AboutComponent } from './about/about.component';
 import { Product, ProductEditPayload, ProductOrderPayload, ProductsComponent } from './products/products.component';
 import { BookingComponent, BookingDateRequest, BookingRequest, BookingSlot } from './booking/booking.component';
@@ -32,7 +33,7 @@ type Inquiry = {
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, FormsModule, WorkComponent, GalleryComponent, ServicesComponent, AboutComponent, ProductsComponent, CartComponent, BookingComponent, BookingLookupComponent, AdminEtsyComponent],
+  imports: [CommonModule, FormsModule, WorkComponent, GalleryComponent, ServicesComponent, AboutComponent, ProductsComponent, CartComponent, BookingComponent, BookingLookupComponent, AdminEtsyComponent, ContactFormComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.css'
 })
@@ -139,6 +140,12 @@ export class AppComponent implements OnInit {
   private apiProductsReady = false;
   private apiProducts: Product[] = [];
   private productEdits: Record<string, Omit<ProductEditPayload, 'id'>> = {};
+  contactService = '';
+  // Cached: a fresh array on every change detection would re-run the contact
+  // form's ngOnChanges and reset the visitor's service choice.
+  private serviceNameList?: string[];
+  get serviceNames(): string[] { return this.serviceNameList ??= this.services.map(service => service.name); }
+
   services: Service[] = [
     {
       name: 'Digital prints',
@@ -1160,9 +1167,11 @@ export class AppComponent implements OnInit {
     void this.loadBookingSlots();
   }
 
-  // Contact details live at the bottom of the Book/Contact Us page. Scrolls
-  // once the booking slots have rendered, since they push the section down.
-  async openContact() {
+  // Contact details and the inquiry form live at the bottom of the
+  // Book/Contact Us page; service preselects the form (from the Services page).
+  // Scrolls once the booking slots have rendered, since they push it down.
+  async openContact(service?: string) {
+    if (service) this.contactService = service;
     this.activeSection = 'booking';
     this.menuOpen = false;
     await this.loadBookingSlots().catch(() => undefined);

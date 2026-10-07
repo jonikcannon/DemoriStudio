@@ -1,6 +1,6 @@
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, ElementRef, Input, Output, EventEmitter, OnChanges, SimpleChanges, HostListener, ViewChild } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, Input, Output, EventEmitter, OnChanges, SimpleChanges, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormsModule, NgForm } from '@angular/forms';
+import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { getApiBaseUrl } from '../media-url';
 
@@ -58,13 +58,8 @@ export class ServicesComponent implements OnChanges {
   @Input() aerialVideos: string[] = [];
   @Input() websites: ShowcaseSite[] = [];
   @Output() serviceChange = new EventEmitter<string>();
-  @Output() contactClick = new EventEmitter<void>();
-  @ViewChild('contactForm') private contactForm?: NgForm;
-  @ViewChild('successBanner') private successBanner?: ElementRef<HTMLElement>;
-  contact = { name: '', email: '', service: 'Aerial', message: '' };
-  submitting = false;
-  formSuccess = '';
-  formError = '';
+  // Emits the service being viewed, preselected in the Book/Contact Us form.
+  @Output() contactClick = new EventEmitter<string>();
   private readonly api = getApiBaseUrl();
   private aerialVideoIndex = 0;
 
@@ -142,7 +137,7 @@ export class ServicesComponent implements OnChanges {
   }
 
   onLearnMoreClick() {
-    this.contactClick.emit();
+    this.contactClick.emit(this.activeService);
   }
 
   canCycleAerialVideos(service: Service) {
@@ -196,50 +191,6 @@ export class ServicesComponent implements OnChanges {
   private isTypingTarget(target: EventTarget | null) {
     if (!(target instanceof HTMLElement)) return false;
     return !!target.closest('input, textarea, select, [contenteditable="true"]');
-  }
-
-  async onSubmitContact() {
-    this.formError = '';
-    this.formSuccess = '';
-    this.submitting = true;
-    let sent = false;
-    try {
-      const response = await fetch(`${this.api}/contact`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(this.contact)
-      });
-      const body = await response.json();
-      if (response.ok) {
-        sent = true;
-        this.formSuccess = 'Thanks. Your inquiry has been sent. We will respond shortly.';
-        this.resetContactForm();
-      } else {
-        this.formError = body.error || 'Could not send your inquiry right now.';
-      }
-    } catch {
-      this.formError = 'Network error. Please try again in a moment.';
-    }
-    this.submitting = false;
-    this.changeDetector.markForCheck();
-    if (sent) this.returnToTop();
-  }
-
-  // Resetting through NgForm, not just reassigning the model, also clears the
-  // touched/dirty/submitted state so the emptied fields don't look half-filled.
-  private resetContactForm() {
-    this.contact = { name: '', email: '', service: this.services[0]?.name || 'Aerial', message: '' };
-    this.contactForm?.resetForm(this.contact);
-  }
-
-  // The confirmation renders at the top of the section (the form is far down
-  // the page), so scroll there and move focus onto it: keyboard and
-  // screen-reader users land on the result instead of the emptied form.
-  private returnToTop() {
-    this.changeDetector.detectChanges();
-    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' });
-    this.successBanner?.nativeElement.focus({ preventScroll: true });
   }
 
   showsEtsyListings(service: Service): boolean {

@@ -1,5 +1,4 @@
 <section id="services" class="services">
-  <p #successBanner class="contact-success-banner" *ngIf="formSuccess" tabindex="-1" role="status">{{ formSuccess }}</p>
   <div class="section-head">
     <div>
       <p class="eyebrow">HOW WE CAN HELP</p>
@@ -89,19 +88,11 @@
     </div>
   </div>
 
-  <section class="services-contact">
+  <div class="services-contact">
     <div>
       <p class="eyebrow">CONTACT US</p>
       <h3>Tell us about your project</h3>
-      <p>Share the property type, timeline, and what coverage you need. We will reply with the right package and next steps.</p>
     </div>
-    <form class="services-contact-form" #contactForm="ngForm" (ngSubmit)="onSubmitContact()">
-      <label>Name<input type="text" name="name" [(ngModel)]="contact.name" required></label>
-      <label>Email<input type="email" name="email" [(ngModel)]="contact.email" required></label>
-      <label>Service<select name="service" [(ngModel)]="contact.service"><option *ngFor="let service of services" [value]="service.name">{{service.name}}</option></select></label>
-      <label>Project details<textarea name="message" [(ngModel)]="contact.message" placeholder="Property size, location, and requested media..." required></textarea></label>
-      <button class="underlined" type="submit" [disabled]="submitting">{{ submitting ? 'Sending…' : 'Send inquiry' }} <span>↗</span></button>
-      <p class="form-error" *ngIf="formError">{{ formError }}</p>
-    </form>
-  </section>
+    <button class="underlined" type="button" (click)="onLearnMoreClick()">Contact us about {{ activeService }} <span>↗</span></button>
+  </div>
 </section>

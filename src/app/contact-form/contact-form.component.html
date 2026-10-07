@@ -1,0 +1,17 @@
+<div class="contact-form-panel">
+  <div>
+    <h3>Tell us about your project</h3>
+    <p>Share the property type, timeline, and what coverage you need. We will reply with the right package and next steps.</p>
+  </div>
+  <div>
+    <p #successBanner class="contact-success-banner" *ngIf="formSuccess" tabindex="-1" role="status">{{ formSuccess }}</p>
+    <form class="contact-form" #contactForm="ngForm" (ngSubmit)="onSubmit()">
+      <label>Name<input type="text" name="name" [(ngModel)]="contact.name" required></label>
+      <label>Email<input type="email" name="email" [(ngModel)]="contact.email" required></label>
+      <label>Service<select name="service" [(ngModel)]="contact.service"><option *ngFor="let name of services" [value]="name">{{ name }}</option></select></label>
+      <label>Project details<textarea name="message" [(ngModel)]="contact.message" placeholder="Property size, location, and requested media..." required></textarea></label>
+      <button class="underlined" type="submit" [disabled]="submitting">{{ submitting ? 'Sending…' : 'Send inquiry' }} <span>↗</span></button>
+      <p class="form-error" *ngIf="formError">{{ formError }}</p>
+    </form>
+  </div>
+</div>

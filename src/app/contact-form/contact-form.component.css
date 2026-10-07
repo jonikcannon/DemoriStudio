@@ -1,0 +1,121 @@
+:host {
+  display: block;
+  max-width: 980px;
+  margin: 64px auto 0;
+  text-align: left;
+}
+
+.contact-form-panel {
+  padding-top: 36px;
+  border-top: 1px solid rgba(5, 5, 5, 0.25);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8%;
+}
+
+h3 {
+  font-family: Georgia, serif;
+  font-size: 37px;
+  font-weight: 400;
+  margin: 0 0 14px;
+}
+
+.contact-form-panel > div > p:not(.contact-success-banner) {
+  font-size: 14px;
+  line-height: 1.65;
+  margin: 0;
+  color: #444840;
+}
+
+.contact-form label {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: bold;
+  margin-bottom: 16px;
+}
+
+.contact-form input,
+.contact-form select,
+.contact-form textarea {
+  display: block;
+  width: 100%;
+  margin-top: 7px;
+  padding: 10px 0;
+  border: 0;
+  border-bottom: 1px solid #7d7f78;
+  background: transparent;
+  font: 15px Arial, Helvetica, sans-serif;
+  color: var(--color-primary);
+  outline: none;
+}
+
+.contact-form textarea {
+  min-height: 88px;
+  resize: vertical;
+}
+
+.underlined {
+  border: 0;
+  border-bottom: 1px solid currentColor;
+  background: none;
+  padding: 0 0 9px;
+  color: inherit;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: bold;
+  cursor: pointer;
+  margin-top: 18px;
+  display: inline-block;
+}
+
+.underlined span {
+  font-size: 17px;
+  margin-left: 24px;
+}
+
+.underlined:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.contact-success-banner {
+  margin: 0 0 28px;
+  padding: 14px 18px;
+  border: 1px solid #b9d3c1;
+  border-left: 4px solid #2f6a44;
+  border-radius: 8px;
+  background: #eaf3ed;
+  color: #234d34;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.contact-success-banner:focus-visible {
+  outline: 2px solid #2f6a44;
+  outline-offset: 2px;
+}
+
+.form-error {
+  color: #9c3d30;
+  font-size: 13px;
+  margin-top: 10px;
+}
+
+@media (max-width: 900px) {
+  :host {
+    margin-top: 44px;
+  }
+
+  .contact-form-panel {
+    grid-template-columns: 1fr;
+    gap: 24px;
+    padding-top: 26px;
+  }
+
+  h3 {
+    font-size: 33px;
+  }
+}
