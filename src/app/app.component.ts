@@ -945,6 +945,10 @@ export class AppComponent implements OnInit {
       this.toggleViewerPlayback();
     }
   }
+  // For (click) on real links. `(click)="menuOpen = false"` evaluates to false,
+  // and Angular calls preventDefault() when a handler returns false, which
+  // silently cancels the navigation.
+  closeMenu(): void { this.menuOpen = false; }
   scrollTo(id: string) { document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' }); this.menuOpen = false; }
   openCartView() {
     this.isCartOpen = true;

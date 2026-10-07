@@ -5,7 +5,7 @@
     <a *ngIf="content.navigation.services.visible" [class.active]="activeSection === 'services'" (click)="activeSection = 'services'; menuOpen = false">{{ content.navigation.services.label }}</a>
     <a *ngIf="content.navigation.booking.visible" [class.active]="activeSection === 'booking'" (click)="openBooking()">{{ content.navigation.booking.label }}</a>
     <a *ngIf="content.navigation.about.visible" [class.active]="activeSection === 'about'" (click)="activeSection = 'about'; menuOpen = false">{{ content.navigation.about.label }}</a>
-    <a *ngIf="content.navigation.shop?.visible" [href]="etsyShopUrl" target="_blank" rel="noreferrer" (click)="menuOpen = false">{{ content.navigation.shop.label }} ↗</a>
+    <a *ngIf="content.navigation.shop?.visible" [href]="etsyShopUrl" target="_blank" rel="noreferrer" (click)="closeMenu()">{{ content.navigation.shop.label }} ↗</a>
   </nav>
   <button class="cart-quick" type="button" (click)="openCartView()">Cart <span>{{ activeCartCount }}</span></button>
   <button class="hamburger" (click)="menuOpen = !menuOpen">☰</button>
