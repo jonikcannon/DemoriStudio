@@ -13,7 +13,7 @@
 
 <main id="top">
   <section class="hero" *ngIf="activeSection === 'home'">
-    <div class="hero-copy"><p class="eyebrow">{{ content.hero.eyebrow }}</p><h1>{{ content.hero.headline }}</h1><p class="intro">{{ content.hero.intro }}</p><button class="underlined" (click)="activeSection = content.hero.ctaTarget">{{ content.hero.ctaLabel }} <span>↓</span></button></div>
+    <div class="hero-copy"><p class="eyebrow">{{ content.hero.eyebrow }}</p><h1>{{ content.hero.headline }}</h1><p class="intro">{{ content.hero.intro }}</p><button class="underlined" (click)="goToSection(content.hero.ctaTarget)">{{ content.hero.ctaLabel }} <span>↓</span></button></div>
     <!-- [muted]="true" binds the PROPERTY, not the attribute. A bare `muted`
          only reflects to the property when the browser parses static HTML;
          Angular creates the element and then sets attributes, so the property
@@ -79,7 +79,7 @@
     [aerialVideos]="aerialServiceVideos"
     [websites]="content.websites"
     (serviceChange)="activeService = $event"
-    (contactClick)="activeSection = 'contact'"></app-services>
+    (contactClick)="openContact()"></app-services>
 
   <app-booking
     *ngIf="activeSection === 'booking'"
@@ -96,7 +96,7 @@
     (book)="onBookSlot($event)"
     (requestDate)="onRequestDate($event)"
     (joinWaitlist)="onJoinWaitlist($event)"
-    (enquire)="activeSection = 'contact'"></app-booking>
+    (enquire)="openContact()"></app-booking>
 
   <app-booking-lookup
     *ngIf="activeSection === 'booking'"
@@ -109,9 +109,9 @@
     (payBalance)="onBookingLookupPayBalance()"
     (reset)="onBookingLookupReset()"></app-booking-lookup>
 
-  <app-about *ngIf="activeSection === 'about'" [content]="content.about" (contactClick)="activeSection = 'contact'"></app-about>
+  <app-about *ngIf="activeSection === 'about'" [content]="content.about" (contactClick)="openContact()"></app-about>
 
-  <section id="contact" class="contact" *ngIf="activeSection === 'contact'"><p class="eyebrow">{{ content.contact.eyebrow }}</p><h2>{{ content.contact.heading }}</h2><a [href]="'mailto:' + content.contact.email" class="contact-link">{{ content.contact.email }} <span>↗</span></a></section>
+  <section id="contact" class="contact" *ngIf="activeSection === 'booking'"><p class="eyebrow">{{ content.contact.eyebrow }}</p><h2>{{ content.contact.heading }}</h2><a [href]="'mailto:' + content.contact.email" class="contact-link">{{ content.contact.email }} <span>↗</span></a></section>
 </main>
 
 <div class="cart-drawer-backdrop" *ngIf="isCartOpen" (click)="closeCartView()">

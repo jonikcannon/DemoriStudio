@@ -12,8 +12,8 @@ type EtsyOptions = {
   returnPolicies: Option[];
   usedCategories: Category[];
 };
-// A local upload, or a photo imported from MakerWorld that the server
-// downloads itself when the listing is created.
+// A local upload, or a photo imported from MakerWorld, which the server saved
+// to the print share on import and publishes from there.
 type Photo = { file?: File; remoteUrl?: string; preview: string };
 type License = { code: string; label: string; commercial: boolean; attribution: boolean };
 type MakerWorldModel = {
@@ -29,6 +29,7 @@ type MakerWorldModel = {
   commercialUse: boolean;
   images: string[];
   attribution: string;
+  photos: { folder: string; saved: number; failed: number; error?: string };
 };
 type CreatedListing = { listingId: string; url: string; editUrl: string; state: 'draft' | 'active'; warnings: string[] };
 
@@ -74,7 +75,6 @@ export class AdminEtsyComponent implements OnChanges, OnDestroy {
   makerworldUrl = '';
   importing = false;
   imported: MakerWorldModel | null = null;
-  commercialPermission = false;
 
   constructor(private readonly changeDetector: ChangeDetectorRef) {}
 
@@ -104,7 +104,6 @@ export class AdminEtsyComponent implements OnChanges, OnDestroy {
     try {
       const model = await this.request<MakerWorldModel>(`/admin/makerworld/import?url=${encodeURIComponent(url)}`);
       this.imported = model;
-      this.commercialPermission = false;
       this.listing.title = model.title;
       this.listing.description = [model.description, model.attribution].filter(Boolean).join('\n\n');
       this.listing.tags = model.tags.filter(tag => ETSY_TAG.test(tag)).slice(0, MAX_TAGS).join(', ');
@@ -130,8 +129,14 @@ export class AdminEtsyComponent implements OnChanges, OnDestroy {
     if (!this.imported) return;
     this.photos = this.photos.filter(photo => photo.file);
     this.imported = null;
-    this.commercialPermission = false;
     this.makerworldUrl = '';
+  }
+
+  // \\server\prints\<title>\photos, from the share's inbox path when it's set.
+  photoFolder(): string {
+    const folder = this.imported?.photos.folder || '';
+    const share = (this.status?.printInboxPath || '').replace(/[\\/]_inbox[\\/]?$/i, '');
+    return share ? `${share}\\${folder}` : folder;
   }
 
   private emptyListing() {
@@ -281,8 +286,7 @@ export class AdminEtsyComponent implements OnChanges, OnDestroy {
     const l = this.listing;
     return Boolean(
       !this.submitting && l.title.trim() && l.description.trim() && l.price && l.quantity &&
-      this.selectedCategory && l.shippingProfileId && l.processingProfileId && l.returnPolicyId && this.photos.length &&
-      (!this.imported || this.imported.commercialUse || this.commercialPermission)
+      this.selectedCategory && l.shippingProfileId && l.processingProfileId && l.returnPolicyId && this.photos.length
     );
   }
 
@@ -309,8 +313,7 @@ export class AdminEtsyComponent implements OnChanges, OnDestroy {
           ...this.listing,
           taxonomyId: this.selectedCategory.id,
           images,
-          makerworldId: this.imported?.id,
-          commercialPermission: this.commercialPermission
+          makerworldId: this.imported?.id
         })
       });
       this.resetForm();
@@ -328,7 +331,6 @@ export class AdminEtsyComponent implements OnChanges, OnDestroy {
     this.releasePhotos(this.photos);
     this.photos = [];
     this.imported = null;
-    this.commercialPermission = false;
     this.makerworldUrl = '';
   }
 }

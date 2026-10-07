@@ -63,7 +63,7 @@ export const defaultSiteContent: SiteContent = {
   navigation: {
     catalog: { label: 'Catalog', visible: true },
     services: { label: 'Services', visible: true },
-    booking: { label: 'Book', visible: true },
+    booking: { label: 'Book/Contact Us', visible: true },
     about: { label: 'About', visible: true },
     shop: { label: '3D Prints', visible: true }
   },

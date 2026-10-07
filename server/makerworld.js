@@ -10,30 +10,16 @@
 // used both to warn in the form and to refuse the listing server-side.
 
 const fs = require('fs');
+const path = require('path');
 const etsy = require('./etsy');
 
-// sharp is loaded on first use, not at startup: its prebuilt libvips needs
-// SSE4.2, and on a CPU without it (the production box is a 2011 AMD A6-3620)
-// require('sharp') kills the whole process with SIGILL -- uncatchable, no log
-// line -- which took the API down. Checking the CPU first turns that into an
-// ordinary error on the one feature that needs it.
-let sharpModule;
-function loadSharp() {
-  if (sharpModule) return sharpModule;
-  if (process.platform === 'linux' && process.arch === 'x64') {
-    let cpuinfo = '';
-    try {
-      cpuinfo = fs.readFileSync('/proc/cpuinfo', 'utf8');
-    } catch {
-      // Can't tell; fall through and let sharp try.
-    }
-    if (cpuinfo && !/\bsse4_2\b/.test(cpuinfo)) {
-      throw new MakerWorldError('Photo import is unavailable: this server\'s CPU is too old for the image library (needs SSE4.2).');
-    }
-  }
-  sharpModule = require('sharp');
-  return sharpModule;
-}
+// Imported photos are saved to the LAN print share (scripts/deploy/
+// setup-print-share.sh), next to where the model's zip unpacks, and the
+// listing is published from those files. No image library is involved:
+// sharp's prebuilt binary needs SSE4.2 and SIGILLs the whole API on the
+// production CPU (AMD A6-3620), and MakerWorld's photos are already JPG/PNG.
+const SHARE_DIR = String(process.env.PRINT_SHARE_DIR || '/srv/prints').trim();
+const ETSY_MAX_BYTES = 10 * 1024 * 1024;
 
 const USER_AGENT = 'DemoriStudios-Admin/1.0 (+https://demori-studios.com)';
 const IMAGE_HOSTS = ['makerworld.bblmw.com', 'public-cdn.bblmw.com'];
@@ -147,7 +133,8 @@ async function fetchModel(id) {
 // listing description needs, so it's visible (and editable) before submitting.
 async function importModel(input) {
   const model = await fetchModel(parseModelId(input));
-  return { ...model, attribution: model.license.attribution ? attributionText(model) : '' };
+  const photos = await savePhotos(model);
+  return { ...model, attribution: model.license.attribution ? attributionText(model) : '', photos };
 }
 
 function attributionText(model) {
@@ -167,29 +154,105 @@ function isAllowedImageUrl(value) {
   }
 }
 
-// Only the MakerWorld image CDN is fetched, so a crafted listing request can't
-// make this server download from arbitrary (e.g. internal) addresses. The CDN
-// serves everything as application/octet-stream, so each photo is re-encoded
-// to a JPEG Etsy accepts, capped at 3000px.
-async function downloadImage(value, index) {
-  if (!isAllowedImageUrl(value)) throw new MakerWorldError(`Photo ${index + 1} is not a MakerWorld image.`);
-  const response = await fetch(value, { headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(30000) });
-  if (!response.ok) throw new MakerWorldError(`Photo ${index + 1} could not be downloaded from MakerWorld (${response.status}).`);
-  const declared = Number(response.headers.get('content-length') || 0);
-  if (declared > MAX_DOWNLOAD_BYTES) throw new MakerWorldError(`Photo ${index + 1} is too large.`);
-  const input = Buffer.from(await response.arrayBuffer());
-  if (input.length > MAX_DOWNLOAD_BYTES) throw new MakerWorldError(`Photo ${index + 1} is too large.`);
-  const sharp = loadSharp();
+// The CDN labels everything octet-stream (and some ".jpg" files are PNGs), so
+// the type comes from the file's magic bytes.
+function sniffImage(buffer) {
+  if (buffer.length > 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return { mimeType: 'image/jpeg', ext: 'jpg' };
+  if (buffer.length > 8 && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return { mimeType: 'image/png', ext: 'png' };
+  if (buffer.length > 6 && /^GIF8[79]a$/.test(buffer.subarray(0, 6).toString('latin1'))) return { mimeType: 'image/gif', ext: 'gif' };
+  return null;
+}
+
+// Same rules as the print-inbox extractor's safe_name(), so the photos land in
+// the folder the model's zip unpacks into when the names match.
+function safeName(name) {
+  return String(name || '').replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').trim().replace(/^[ .]+|[ .]+$/g, '').slice(0, 100) || 'model';
+}
+
+function photoDir(model) {
+  return path.join(SHARE_DIR, safeName(model.title), 'photos');
+}
+
+function photoStem(model, url) {
+  return `makerworld-${model.images.indexOf(url) + 1}`;
+}
+
+function findSavedPhoto(model, url) {
+  const dir = photoDir(model);
+  const stem = photoStem(model, url);
   try {
-    const buffer = await sharp(input)
-      .rotate()
-      .resize({ width: 3000, height: 3000, fit: 'inside', withoutEnlargement: true })
-      .jpeg({ quality: 88 })
-      .toBuffer();
-    return { buffer, mimeType: 'image/jpeg', name: `makerworld-${index + 1}.jpg` };
+    const file = fs.readdirSync(dir).find(name => path.parse(name).name === stem);
+    return file ? path.join(dir, file) : null;
   } catch {
-    throw new MakerWorldError(`Photo ${index + 1} from MakerWorld is not a readable image.`);
+    return null;
   }
+}
+
+// Only the MakerWorld image CDN is fetched, so a crafted listing request can't
+// make this server download from arbitrary (e.g. internal) addresses.
+async function fetchPhoto(url, label) {
+  if (!isAllowedImageUrl(url)) throw new MakerWorldError(`${label} is not a MakerWorld image.`);
+  const response = await fetch(url, { headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(30000) });
+  if (!response.ok) throw new MakerWorldError(`${label} could not be downloaded from MakerWorld (${response.status}).`);
+  const declared = Number(response.headers.get('content-length') || 0);
+  if (declared > MAX_DOWNLOAD_BYTES) throw new MakerWorldError(`${label} is too large.`);
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (buffer.length > MAX_DOWNLOAD_BYTES) throw new MakerWorldError(`${label} is too large.`);
+  return buffer;
+}
+
+// Downloads every photo of the model into <share>/<title>/photos/ (skipping
+// ones already there), group-writable so they can be edited or replaced over
+// the share before publishing. A photo that fails is reported, not fatal.
+async function savePhotos(model) {
+  const dir = photoDir(model);
+  try {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o2775 });
+  } catch (error) {
+    console.warn(`MakerWorld photos: cannot create ${dir}: ${error.message}`);
+    return { folder: '', saved: 0, failed: model.images.length, error: 'The print share is not writable from the API.' };
+  }
+  const results = await Promise.all(model.images.map(async (url, index) => {
+    if (findSavedPhoto(model, url)) return true;
+    try {
+      const buffer = await fetchPhoto(url, `Photo ${index + 1}`);
+      const type = sniffImage(buffer);
+      if (!type) throw new MakerWorldError(`Photo ${index + 1} is not a JPG, PNG, or GIF.`);
+      const file = path.join(dir, `${photoStem(model, url)}.${type.ext}`);
+      fs.writeFileSync(file, buffer);
+      fs.chmodSync(file, 0o664);
+      return true;
+    } catch (error) {
+      console.warn(`MakerWorld photos: ${model.id} photo ${index + 1}: ${error.message}`);
+      return false;
+    }
+  }));
+  const saved = results.filter(Boolean).length;
+  return { folder: path.relative(SHARE_DIR, dir).split(path.sep).join('\\'), saved, failed: results.length - saved };
+}
+
+// Publishing reads the photo saved on the share at import, so any edit made
+// there is what goes to Etsy. If it's missing (share unavailable, or deleted)
+// it's downloaded and saved again.
+async function downloadImage(url, index, model) {
+  const label = `Photo ${index + 1}`;
+  if (!isAllowedImageUrl(url) || !model.images.includes(url)) throw new MakerWorldError(`${label} is not one of this model's MakerWorld photos.`);
+  let file = findSavedPhoto(model, url);
+  if (!file) {
+    await savePhotos({ ...model, images: [url] }).catch(() => null);
+    file = findSavedPhoto({ ...model, images: [url] }, url);
+  }
+  let buffer;
+  try {
+    buffer = file ? fs.readFileSync(file) : await fetchPhoto(url, label);
+  } catch (error) {
+    if (error instanceof MakerWorldError) throw error;
+    throw new MakerWorldError(`${label} could not be read from the print share.`);
+  }
+  const type = sniffImage(buffer);
+  if (!type) throw new MakerWorldError(`${label} is not a JPG, PNG, or GIF.`);
+  if (buffer.length > ETSY_MAX_BYTES) throw new MakerWorldError(`${label} is over Etsy's 10 MB limit; shrink it on the print share and try again.`);
+  return { buffer, mimeType: type.mimeType, name: `${photoStem(model, url)}.${type.ext}` };
 }
 
 module.exports = { MakerWorldError, importModel, fetchModel, attributionText, downloadImage, isAllowedImageUrl };

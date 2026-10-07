@@ -305,17 +305,15 @@ async function validateListing(input) {
   if (!images.length) throw new ListingInputError('Add at least one photo.');
   if (images.length > MAX_IMAGES) throw new ListingInputError(`Etsy allows at most ${MAX_IMAGES} photos per listing.`);
 
-  // Items imported from MakerWorld are re-checked against the model's
-  // license here, whatever the form showed.
+  // No license gate: the admin only imports models they have permission to
+  // sell. The creator credit is still added where the license asks for one.
   const makerworldId = input?.makerworldId ? String(input.makerworldId) : '';
   if (makerworldId && !/^\d+$/.test(makerworldId)) throw new ListingInputError('MakerWorld model ID is invalid.');
   if (!makerworldId && images.some(image => image?.remoteUrl)) throw new ListingInputError('Imported photos must come with their MakerWorld model.');
   let finalDescription = description;
+  let model = null;
   if (makerworldId) {
-    const model = await makerworld.fetchModel(makerworldId);
-    if (!model.commercialUse && input?.commercialPermission !== true) {
-      throw new ListingInputError(`"${model.title}" is licensed ${model.license.label}, which doesn't allow selling prints. Confirm you have the creator's commercial permission to continue.`);
-    }
+    model = await makerworld.fetchModel(makerworldId);
     if (model.license.attribution && !description.includes(model.url)) {
       finalDescription = `${description}\n\n${makerworld.attributionText(model)}`;
     }
@@ -326,7 +324,7 @@ async function validateListing(input) {
   for (const [index, image] of images.entries()) {
     if (image?.remoteUrl) {
       try {
-        files.push(await makerworld.downloadImage(image.remoteUrl, index));
+        files.push(await makerworld.downloadImage(image.remoteUrl, index, model));
       } catch (error) {
         throw new ListingInputError(error.message);
       }

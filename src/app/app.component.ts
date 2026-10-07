@@ -1048,9 +1048,9 @@ export class AppComponent implements OnInit {
   readonly heroCtaTargets: { value: SiteSection; label: string }[] = [
     { value: 'products', label: 'Catalog' },
     { value: 'services', label: 'Services' },
-    { value: 'booking', label: 'Book' },
+    { value: 'booking', label: 'Book/Contact Us' },
     { value: 'about', label: 'About' },
-    { value: 'contact', label: 'Contact' }
+    { value: 'contact', label: 'Contact (bottom of Book/Contact Us)' }
   ];
 
   // The About copy is stored as a list of paragraphs, but edited as one
@@ -1158,6 +1158,19 @@ export class AppComponent implements OnInit {
     // would otherwise leave an now-blocked time sitting in the panel as if it
     // were still bookable, until a full page reload happened to clear it.
     void this.loadBookingSlots();
+  }
+
+  // Contact details live at the bottom of the Book/Contact Us page.
+  openContact() {
+    this.openBooking();
+    setTimeout(() => document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' }));
+  }
+
+  // Hero button target; 'booking' and 'contact' both open the combined page.
+  goToSection(section: SiteSection) {
+    if (section === 'contact') this.openContact();
+    else if (section === 'booking') this.openBooking();
+    else this.activeSection = section;
   }
 
   async onBookingLookup({ email, confirmationCode }: { email: string; confirmationCode: string }) {

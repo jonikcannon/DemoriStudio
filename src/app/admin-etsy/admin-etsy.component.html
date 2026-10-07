@@ -38,30 +38,13 @@
       </div>
     </label>
 
-    <div class="etsy-imported" *ngIf="imported" [class.etsy-imported-blocked]="!imported.commercialUse">
-      <div>
-        <b>Imported "{{ imported.title }}"</b> by
-        <a [href]="imported.creator.url || imported.url" target="_blank" rel="noreferrer">{{ imported.creator.name }}</a>
-        · <a [href]="imported.url" target="_blank" rel="noreferrer">view on MakerWorld ↗</a>
-        <button type="button" class="etsy-link" (click)="clearImport()">Clear</button>
-      </div>
-      <p>License: <b>{{ imported.license.label }}</b>
-        <ng-container *ngFor="let original of imported.originals"> · remix of "{{ original.title }}" ({{ original.license.label }})</ng-container>
-      </p>
-      <p *ngIf="imported.commercialUse">This license allows selling prints. A credit line has been added to the description{{ imported.attribution ? '' : ' (not required for this license)' }}.</p>
-      <ng-container *ngIf="!imported.commercialUse">
-        <p>This license does <b>not</b> allow selling prints. Only list it if the creator has given you commercial permission (for example a commercial license or written OK).</p>
-        <label class="etsy-checkbox"><input type="checkbox" [(ngModel)]="commercialPermission" name="commercialPermission"> I have the creator's permission to sell prints of this design</label>
+    <p class="etsy-muted" *ngIf="imported">
+      <ng-container *ngIf="imported.photos.saved; else photosNotSaved">
+        {{ imported.photos.saved }} photo{{ imported.photos.saved === 1 ? '' : 's' }} saved to <code>{{ photoFolder() }}</code>{{ imported.photos.failed ? ' (' + imported.photos.failed + ' failed)' : '' }}; edits there are what gets published.
       </ng-container>
-      <p class="etsy-muted">Photos are the creator's; swap in photos of your own print when you can.</p>
-      <p class="etsy-print-files">
-        <a [href]="imported.url" target="_blank" rel="noreferrer">Download files on MakerWorld ↗</a>
-        <ng-container *ngIf="status?.printInboxPath; else noInbox">
-          and save the zip to <code>{{ status?.printInboxPath }}</code> -- it unpacks into its own folder on the print share.
-        </ng-container>
-        <ng-template #noInbox>(sign in to MakerWorld; pick a print profile and use its Download button).</ng-template>
-      </p>
-    </div>
+      <ng-template #photosNotSaved>Photos could not be saved to the print share{{ imported.photos.error ? ': ' + imported.photos.error : '' }}.</ng-template>
+      <button type="button" class="etsy-link" (click)="clearImport()">Clear</button>
+    </p>
   </form>
 
   <form class="etsy-form" *ngIf="options" (ngSubmit)="submit()">
@@ -129,7 +112,6 @@
 
       <label class="etsy-checkbox"><input type="checkbox" [(ngModel)]="listing.publish" name="publish"> Publish now <span class="etsy-optional">otherwise it's saved as a draft for you to review on Etsy ($0.20 Etsy fee when published)</span></label>
 
-      <p class="etsy-error" *ngIf="imported && !imported.commercialUse && !commercialPermission">Confirm the creator's commercial permission above to continue.</p>
       <button class="etsy-primary" type="submit" [disabled]="!canSubmit">
         {{ submitting ? 'Sending to Etsy…' : (listing.publish ? 'Create and publish' : 'Save draft to Etsy') }} <span>→</span>
       </button>

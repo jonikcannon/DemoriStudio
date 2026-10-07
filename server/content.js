@@ -20,7 +20,7 @@ const defaults = {
   navigation: {
     catalog: { label: 'Catalog', visible: true },
     services: { label: 'Services', visible: true },
-    booking: { label: 'Book', visible: true },
+    booking: { label: 'Book/Contact Us', visible: true },
     about: { label: 'About', visible: true },
     // External link to the Etsy 3D printing shop (ETSY_SHOP_URL in
     // src/app/site-content.ts); only its label and visibility are editable.
