@@ -80,59 +80,121 @@ function htmlToText(html) {
     .trim();
 }
 
+// A snapshot of each imported model, so publishing later reads the details
+// (license included) as they were at import instead of asking MakerWorld
+// again -- MakerWorld's bot check often refuses this server's requests.
+const SNAPSHOT_DIR = path.join(__dirname, '../storage/makerworld');
+
+function readSnapshot(id) {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(SNAPSHOT_DIR, `${id}.json`), 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function writeSnapshot(model) {
+  try {
+    fs.mkdirSync(SNAPSHOT_DIR, { recursive: true });
+    fs.writeFileSync(path.join(SNAPSHOT_DIR, `${model.id}.json`), JSON.stringify(model));
+  } catch (error) {
+    console.warn(`MakerWorld snapshot for ${model.id} not saved: ${error.message}`);
+  }
+}
+
+function remember(model) {
+  cache.set(model.id, { model, fetchedAt: Date.now() });
+  writeSnapshot(model);
+  return model;
+}
+
 async function fetchModel(id) {
   const cached = cache.get(id);
   if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) return cached.model;
+  const snapshot = readSnapshot(id);
+  if (snapshot) return snapshot;
 
-  const response = await fetch(`https://makerworld.com/api/v1/design-service/design/${id}`, {
-    headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
-    signal: AbortSignal.timeout(15000)
-  });
+  let response;
+  try {
+    response = await fetch(`https://makerworld.com/api/v1/design-service/design/${id}`, {
+      headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+      signal: AbortSignal.timeout(15000)
+    });
+  } catch {
+    throw new MakerWorldError('Could not reach MakerWorld. Use the "Send to Demori" bookmark on the model page instead.');
+  }
   if (response.status === 404) throw new MakerWorldError('That MakerWorld model was not found.');
+  if (response.status === 403) throw new MakerWorldError('MakerWorld is blocking this server right now. Use the "Send to Demori" bookmark on the model page instead.');
   if (!response.ok) throw new MakerWorldError(`MakerWorld returned ${response.status}. Try again in a minute.`);
 
   const design = await response.json().catch(() => null);
-  if (!design?.id) throw new MakerWorldError('Could not read that MakerWorld model; the API may have changed.');
+  return remember(modelFromDesign(design));
+}
 
-  const creator = design.designCreator || {};
-  const license = licenseInfo(design.license);
+// MakerWorld's design JSON -- from its API, or sent by the "Send to Demori"
+// bookmark from the admin's own browser -- into the fields the form uses.
+// Bookmark data is untrusted input: every field is coerced and trimmed, and
+// photos are limited to MakerWorld's image CDN like any other import.
+function modelFromDesign(design) {
+  if (!design || !/^\d+$/.test(String(design.id || ''))) {
+    throw new MakerWorldError('Could not read that MakerWorld model; the page or API may have changed.');
+  }
+  const list = value => (Array.isArray(value) ? value : []);
+  const text = (value, max) => String(value ?? '').slice(0, max);
+  const creator = design.designCreator && typeof design.designCreator === 'object' ? design.designCreator : {};
+  const license = licenseInfo(text(design.license, 80));
   // A remix inherits its originals' terms too, so each one must allow sale.
-  const originals = (design.originals || []).map(original => ({
-    title: original.title || '',
-    author: original.author || '',
-    url: original.link || '',
-    license: licenseInfo(original.license)
+  const originals = list(design.originals).slice(0, 20).map(original => ({
+    title: text(original?.title, 200),
+    author: text(original?.author, 100),
+    url: isMakerWorldUrl(original?.link) ? String(original.link) : '',
+    license: licenseInfo(text(original?.license, 80))
   }));
-  const pictures = design.designExtension?.design_pictures || [];
+  const handle = text(creator.handle, 80).replace(/[^\w.-]/g, '');
 
-  const model = {
+  return {
     id: String(design.id),
     url: `https://makerworld.com/en/models/${design.id}`,
-    title: htmlToText(design.title).slice(0, 140),
-    description: htmlToText(design.summary).slice(0, 8000),
+    title: htmlToText(text(design.title, 2000)).slice(0, 140),
+    description: htmlToText(text(design.summary, 100000)).slice(0, 8000),
     // Used to seed the Etsy category search, e.g. "Hobby & DIY".
-    categories: (design.categories || []).map(category => String(category.name || '')).filter(Boolean),
-    tags: [...new Set((design.tagsOriginal || design.tags || []).map(tag => String(tag).trim()).filter(Boolean))],
+    categories: list(design.categories).map(category => text(category?.name, 80)).filter(Boolean).slice(0, 10),
+    tags: [...new Set(list(design.tagsOriginal?.length ? design.tagsOriginal : design.tags).map(tag => text(tag, 60).trim()).filter(Boolean))].slice(0, 40),
     creator: {
-      name: creator.name || 'Unknown creator',
-      url: creator.handle ? `https://makerworld.com/en/@${creator.handle}` : ''
+      name: text(creator.name, 100) || 'Unknown creator',
+      url: handle ? `https://makerworld.com/en/@${handle}` : ''
     },
     license,
     originals,
     commercialUse: license.commercial && originals.every(original => original.license.commercial),
-    images: pictures
-      .map(picture => picture.url)
+    images: list(design.designExtension?.design_pictures)
+      .map(picture => picture?.url)
       .filter(url => isAllowedImageUrl(url))
       .slice(0, MAX_IMAGES)
   };
-  cache.set(id, { model, fetchedAt: Date.now() });
-  return model;
+}
+
+function isMakerWorldUrl(value) {
+  try {
+    const url = new URL(String(value));
+    return url.protocol === 'https:' && /^(www\.)?makerworld\.com$/i.test(url.hostname);
+  } catch {
+    return false;
+  }
 }
 
 // What the admin form prefills from: the model plus the credit line the
 // listing description needs, so it's visible (and editable) before submitting.
 async function importModel(input) {
-  const model = await fetchModel(parseModelId(input));
+  return prefill(await fetchModel(parseModelId(input)));
+}
+
+// The same, from design JSON the bookmark read in the admin's browser.
+async function importDesign(design) {
+  return prefill(remember(modelFromDesign(design)));
+}
+
+async function prefill(model) {
   const photos = await savePhotos(model);
   return { ...model, attribution: model.license.attribution ? attributionText(model) : '', photos };
 }
@@ -255,4 +317,4 @@ async function downloadImage(url, index, model) {
   return { buffer, mimeType: type.mimeType, name: `${photoStem(model, url)}.${type.ext}` };
 }
 
-module.exports = { MakerWorldError, importModel, fetchModel, attributionText, downloadImage, isAllowedImageUrl };
+module.exports = { MakerWorldError, importModel, importDesign, fetchModel, attributionText, downloadImage, isAllowedImageUrl };

@@ -173,7 +173,7 @@
         <button type="button" [class.active]="adminView === 'etsy'" (click)="setAdminView('etsy')">Etsy</button>
       </div>
 
-      <app-admin-etsy *ngIf="adminView === 'etsy'" [adminToken]="adminToken" [connectResult]="etsyConnectResult"></app-admin-etsy>
+      <app-admin-etsy *ngIf="adminView === 'etsy'" [adminToken]="adminToken" [connectResult]="etsyConnectResult" [pendingImportTick]="makerWorldImportTick"></app-admin-etsy>
 
       <section class="admin-site-content" *ngIf="adminView === 'content'">
         <form (ngSubmit)="saveSiteContent()">

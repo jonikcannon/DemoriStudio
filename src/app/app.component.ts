@@ -10,7 +10,7 @@ import { AboutComponent } from './about/about.component';
 import { Product, ProductEditPayload, ProductOrderPayload, ProductsComponent } from './products/products.component';
 import { BookingComponent, BookingDateRequest, BookingRequest, BookingSlot } from './booking/booking.component';
 import { BookingLookupComponent, BookingLookupResult } from './booking-lookup/booking-lookup.component';
-import { AdminEtsyComponent } from './admin-etsy/admin-etsy.component';
+import { AdminEtsyComponent, PENDING_DESIGN_KEY } from './admin-etsy/admin-etsy.component';
 import { CartComponent, CartItem } from './cart/cart.component';
 import { getApiBaseUrl, mediaUrl } from './media-url';
 import { defaultSiteContent, ETSY_SHOP_URL, NavKey, ServiceDetails, SiteContent, SiteSection } from './site-content';
@@ -480,6 +480,31 @@ export class AppComponent implements OnInit {
     this.initGoogleSignIn();
     void this.handleBookingCheckoutReturn();
     this.handleEtsyConnectReturn();
+    this.handleMakerWorldHandoff();
+    // The bookmark reuses one named tab, so later hand-offs only change the hash.
+    window.addEventListener('hashchange', () => this.handleMakerWorldHandoff());
+  }
+
+  makerWorldImportTick = 0;
+
+  // The "Send to Demori" bookmark opens #mw=<base64 JSON of a MakerWorld
+  // model>. Kept in sessionStorage so it survives the admin login, then
+  // imported by the Etsy tab.
+  private handleMakerWorldHandoff() {
+    const match = window.location.hash.match(/^#mw=(.+)$/);
+    if (!match) return;
+    window.history.replaceState({}, '', `${window.location.pathname}${window.location.search}`);
+    try {
+      const bytes = Uint8Array.from(atob(decodeURIComponent(match[1])), char => char.charCodeAt(0));
+      const json = new TextDecoder().decode(bytes);
+      JSON.parse(json);
+      sessionStorage.setItem(PENDING_DESIGN_KEY, json);
+    } catch {
+      return;
+    }
+    this.adminView = 'etsy';
+    this.makerWorldImportTick++;
+    this.openAdmin();
   }
 
   // The Etsy OAuth callback (/api/etsy/oauth/callback) lands back here with

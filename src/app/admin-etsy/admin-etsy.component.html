@@ -37,6 +37,10 @@
         <button class="etsy-secondary" type="submit" [disabled]="!makerworldUrl.trim() || importing">{{ importing ? 'Getting info…' : 'Get info' }}</button>
       </div>
     </label>
+    <p class="etsy-bookmarklet">
+      <a class="etsy-bookmarklet-link" [href]="bookmarklet" (click)="$event.preventDefault()" title="Drag this to your bookmarks bar">◇ Send to Demori</a>
+      <span>Drag this to your bookmarks bar once. Then, on any MakerWorld model page, click it to fill in this form from your own browser -- it works even when MakerWorld blocks "Get info".</span>
+    </p>
 
     <p class="etsy-muted" *ngIf="imported">
       <ng-container *ngIf="imported.photos.saved; else photosNotSaved">

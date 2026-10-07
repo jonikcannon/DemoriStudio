@@ -1082,6 +1082,19 @@ app.get('/api/admin/makerworld/import', auth, async (req, res) => {
   }
 });
 
+// The same, from the design JSON the "Send to Demori" bookmark read on a
+// MakerWorld page in the admin's own browser (MakerWorld often blocks this
+// server's own requests).
+app.post('/api/admin/makerworld/import-design', auth, async (req, res) => {
+  try {
+    res.json(await makerworld.importDesign(req.body?.design));
+  } catch (error) {
+    if (error instanceof makerworld.MakerWorldError) return res.status(422).json({ error: error.message });
+    console.error('MakerWorld bookmark import failed.', error.message || error);
+    res.status(500).json({ error: 'Could not import that model.' });
+  }
+});
+
 app.post('/api/admin/etsy/listings', auth, async (req, res) => {
   try {
     res.status(201).json(await etsySeller.createListing(req.body));

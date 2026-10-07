@@ -1,7 +1,30 @@
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, Input, OnChanges, OnDestroy, SimpleChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { DomSanitizer, SafeUrl } from '@angular/platform-browser';
 import { getApiBaseUrl } from '../media-url';
+
+export const PENDING_DESIGN_KEY = 'demori_makerworld_pending';
+
+// Runs on a MakerWorld model page in the admin's own browser, where MakerWorld
+// answers normally (it often blocks this server). Reads the model from the
+// page's __NEXT_DATA__ -- or its own API, same-origin, after client-side
+// navigation leaves that stale -- keeps only the fields the import uses, and
+// opens this site with them in the URL fragment, which never reaches a server.
+function buildBookmarklet(origin: string): string {
+  const source = `(()=>{
+const m=location.pathname.match(/\\/models\\/(\\d+)/);
+if(!/(^|\\.)makerworld\\.com$/.test(location.hostname)||!m){alert('Open a MakerWorld model page first, then click Send to Demori.');return}
+const pick=d=>({id:d.id,title:d.title,summary:d.summary,license:d.license,
+designCreator:{name:(d.designCreator||{}).name,handle:(d.designCreator||{}).handle},
+originals:(d.originals||[]).map(o=>({title:o.title,author:o.author,link:o.link,license:o.license})),
+categories:(d.categories||[]).map(c=>({name:c.name})),tagsOriginal:d.tagsOriginal,tags:d.tags,
+designExtension:{design_pictures:((d.designExtension||{}).design_pictures||[]).map(p=>({url:p.url}))}});
+const send=d=>{const b=btoa(unescape(encodeURIComponent(JSON.stringify(pick(d)))));const u=${JSON.stringify(origin)}+'/#mw='+encodeURIComponent(b);if(!window.open(u,'demori_admin'))location.href=u};
+try{const d=JSON.parse(document.getElementById('__NEXT_DATA__').textContent).props.pageProps.design;if(d&&String(d.id)===m[1])return send(d)}catch(e){}
+fetch('/api/v1/design-service/design/'+m[1],{headers:{Accept:'application/json'}}).then(r=>r.json()).then(send).catch(()=>alert('Could not read this MakerWorld model.'))})()`;
+  return `javascript:${encodeURIComponent(source.replace(/\n/g, ''))}`;
+}
 
 type EtsyStatus = { configured: boolean; connected: boolean; connectedAt: string | null; redirectUri: string; printInboxPath: string };
 type Option = { id: number; label: string };
@@ -56,6 +79,8 @@ export class AdminEtsyComponent implements OnChanges, OnDestroy {
   @Input() adminToken = '';
   // Result of the OAuth round trip, read from the return URL by AppComponent.
   @Input() connectResult: { ok: boolean; message: string } | null = null;
+  // Bumped by AppComponent each time the bookmark hands over a model.
+  @Input() pendingImportTick = 0;
 
   private readonly api = getApiBaseUrl();
   status: EtsyStatus | null = null;
@@ -77,10 +102,20 @@ export class AdminEtsyComponent implements OnChanges, OnDestroy {
   importing = false;
   imported: MakerWorldModel | null = null;
 
-  constructor(private readonly changeDetector: ChangeDetectorRef) {}
+  // The "Send to Demori" bookmarklet, built for whichever origin this admin
+  // runs on. Angular blocks javascript: links unless explicitly trusted.
+  readonly bookmarklet: SafeUrl;
+
+  constructor(
+    private readonly changeDetector: ChangeDetectorRef,
+    sanitizer: DomSanitizer
+  ) {
+    this.bookmarklet = sanitizer.bypassSecurityTrustUrl(buildBookmarklet(window.location.origin));
+  }
 
   ngOnChanges(changes: SimpleChanges) {
     if (changes['adminToken'] && this.adminToken) void this.loadStatus();
+    else if (changes['pendingImportTick'] && this.adminToken && this.options) void this.importPendingDesign();
   }
 
   ngOnDestroy() {
@@ -92,18 +127,41 @@ export class AdminEtsyComponent implements OnChanges, OnDestroy {
     for (const photo of photos) if (photo.file) URL.revokeObjectURL(photo.preview);
   }
 
+  async importFromMakerWorld() {
+    const url = this.makerworldUrl.trim();
+    if (!url) return;
+    await this.runImport(() => this.request<MakerWorldModel>(`/admin/makerworld/import?url=${encodeURIComponent(url)}`));
+  }
+
+  // A model sent by the "Send to Demori" bookmark (see AppComponent's
+  // handleMakerWorldHandoff), kept in sessionStorage across an admin login.
+  private async importPendingDesign() {
+    let design: unknown;
+    try {
+      design = JSON.parse(sessionStorage.getItem(PENDING_DESIGN_KEY) || 'null');
+      sessionStorage.removeItem(PENDING_DESIGN_KEY);
+    } catch {
+      return;
+    }
+    if (!design) return;
+    await this.runImport(() => this.request<MakerWorldModel>('/admin/makerworld/import-design', {
+      method: 'POST',
+      body: JSON.stringify({ design })
+    }));
+    if (this.imported) this.makerworldUrl = this.imported.url;
+  }
+
   // Fills in everything the MakerWorld model provides; the rest (price,
   // category choice, profiles) stays with the admin. Replaces any earlier
   // import's photos but keeps photos uploaded by hand.
-  async importFromMakerWorld() {
-    const url = this.makerworldUrl.trim();
-    if (!url || this.importing) return;
+  private async runImport(load: () => Promise<MakerWorldModel>) {
+    if (this.importing) return;
     this.importing = true;
     this.error = '';
     this.created = null;
     this.refresh();
     try {
-      const model = await this.request<MakerWorldModel>(`/admin/makerworld/import?url=${encodeURIComponent(url)}`);
+      const model = await load();
       this.imported = model;
       this.listing.title = model.title;
       this.listing.description = [model.description, model.attribution].filter(Boolean).join('\n\n');
@@ -187,7 +245,10 @@ export class AdminEtsyComponent implements OnChanges, OnDestroy {
     this.refresh();
     try {
       this.status = await this.request<EtsyStatus>('/admin/etsy/status');
-      if (this.status.connected) await this.loadOptions();
+      if (this.status.connected) {
+        await this.loadOptions();
+        await this.importPendingDesign();
+      }
     } catch (error) {
       this.error = error instanceof Error ? error.message : 'Could not load Etsy status.';
     }

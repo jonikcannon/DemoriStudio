@@ -459,3 +459,33 @@ textarea {
     gap: 0;
   }
 }
+
+/* "Send to Demori" bookmarklet: dragged to the bookmarks bar, not clicked here. */
+.etsy-bookmarklet {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 12px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #676961;
+}
+
+.etsy-bookmarklet-link {
+  flex: none;
+  padding: 8px 14px;
+  border: 1px dashed var(--color-primary);
+  border-radius: 999px;
+  color: var(--color-primary);
+  font-weight: bold;
+  text-decoration: none;
+  cursor: grab;
+  white-space: nowrap;
+}
+
+@media (max-width: 700px) {
+  .etsy-bookmarklet {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
