@@ -117,7 +117,7 @@
     (payBalance)="onBookingLookupPayBalance()"
     (reset)="onBookingLookupReset()"></app-booking-lookup>
 
-  <app-about *ngIf="activeSection === 'about'" [content]="content.about" (contactClick)="openContact()"></app-about>
+  <app-about *ngIf="activeSection === 'about'" [content]="content.about" [services]="services" (contactClick)="openContact()" (openService)="openServiceTab($event)" (book)="openBooking(); scrollToTop()"></app-about>
 
   <section id="contact" class="contact-form-section" *ngIf="activeSection === 'booking'"><app-contact-form [services]="serviceNames" [service]="contactService"></app-contact-form></section>
 </main>

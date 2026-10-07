@@ -52,7 +52,8 @@ const defaults = {
       'While I am newer in my professional photography journey, I bring an exceptional eye for composition, timing, and storytelling that helps each shoot feel intentional and emotionally true.',
       'I also bring 15+ years of technology leadership across the full software development lifecycle, currently serving as an Application Delivery Manager, Senior QA Automation Engineer, and Team Lead.',
       'That technical experience shapes how I approach creative work: strong preparation, repeatable quality, precision in post-processing, and a client experience built on clear communication and dependable delivery.',
-      'Whether I am shooting portraits, creating aerial content, or building brand-focused visuals, my goal is simple: create images that feel personal, polished, and memorable.'
+      'That same background is why the studio does more than photography. I design and build websites and apps -- including this site, the Fairview Community Center site, and the CasinoSims app on Google Play -- and run a 3D print shop that makes pieces to order, from shop designs to custom requests.',
+      'Whether it is a portrait session, aerial coverage, a new website or app, or a one-off print, my goal is the same: work that feels personal, polished, and built to last.'
     ],
     portrait: '',
     ctaLabel: 'More about the studio',

@@ -1,3 +1,22 @@
 :host{display:block}.about{background:var(--color-background);padding:92px 8vw;display:grid;grid-template-columns:1fr 1fr;gap:8%;align-items:start}.about-image{width:100%;height:auto}.about-image img{width:100%;height:auto;display:block}.about-copy{padding-top:40px}.eyebrow{font-size:10px;letter-spacing:.2em;font-weight:bold;margin:0 0 25px}.about h2{font-family:Georgia,'Times New Roman',serif;font-weight:400;letter-spacing:-.055em;margin:0;font-size:clamp(48px,5vw,60px);line-height:1}.about p{font-size:15px;line-height:1.65;margin:22px 0}.underlined{border:0;border-bottom:1px solid currentColor;background:none;padding:0 0 9px;color:inherit;font-size:11px;letter-spacing:.12em;text-transform:uppercase;font-weight:bold;cursor:pointer;margin-top:20px;display:inline-block}.underlined span{font-size:17px;margin-left:24px}.about-features{background:var(--color-background);padding:0 8vw 92px}.about-features-heading{font-size:10px;letter-spacing:.2em;font-weight:bold;text-transform:uppercase;margin:0 0 28px}.about-features-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:48px 6%}.about-feature img{width:100%;height:200px;object-fit:cover;display:block;margin-bottom:20px}.about-feature h4{font-family:Georgia,'Times New Roman',serif;font-weight:400;margin:0 0 10px;font-size:22px}.about-feature p{font-size:14px;line-height:1.6;margin:0;color:var(--color-text)}
 @media(max-width:700px){.about{padding:75px 9vw;display:flex;flex-direction:column;gap:42px}.about-image{height:360px;width:100%}.about-image img{height:100%;object-fit:cover}.about h2{font-size:50px}.about p{font-size:14px;margin:16px 0}.about-features{padding:0 9vw 75px}.about-features-heading{margin-bottom:20px}.about-features-grid{gap:36px}}
 
+
+/* What I offer: every service, from the same data as the Services page. */
+.about-services{background:#dedbd1;padding:92px 8vw}
+.about-services-head{max-width:640px;margin-bottom:40px}
+.about-services-head h3{font-family:Georgia,'Times New Roman',serif;font-weight:400;letter-spacing:-.04em;font-size:clamp(32px,3.6vw,46px);line-height:1.08;margin:0 0 18px}
+.about-services-head p:not(.eyebrow){font-size:15px;line-height:1.65;margin:0}
+.about-services-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:18px}
+.about-service{display:flex;flex-direction:column;align-items:flex-start;padding:26px 24px;background:var(--color-background);border:1px solid #c9c4b8}
+.about-service-icon{font-size:24px;color:var(--color-primary)}
+.about-service-name{margin:12px 0 6px;font-size:10px;letter-spacing:.16em;text-transform:uppercase;font-weight:bold;color:#676961}
+.about-service h4{font-family:Georgia,'Times New Roman',serif;font-weight:400;font-size:22px;line-height:1.2;margin:0 0 10px}
+.about-service-text{font-size:14px;line-height:1.6;margin:0 0 14px;color:var(--color-text)}
+.about-service-price{font-size:13px;font-weight:bold;margin:0 0 4px}
+.about-service .underlined{margin-top:auto;padding-top:14px}
+.about-services-cta{display:flex;flex-wrap:wrap;gap:14px;margin-top:40px}
+.about-services-cta button{font:inherit;font-size:12px;letter-spacing:.12em;text-transform:uppercase;font-weight:bold;padding:15px 26px;cursor:pointer;border:1px solid var(--color-primary)}
+.about-cta-primary{background:var(--color-primary);color:var(--color-background)}
+.about-cta-secondary{background:transparent;color:var(--color-primary)}
+@media(max-width:700px){.about-services{padding:72px 7vw}.about-services-grid{grid-template-columns:1fr}}

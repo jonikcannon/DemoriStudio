@@ -10,6 +10,28 @@
   </div>
 </section>
 
+<section class="about-services" *ngIf="services.length">
+  <div class="about-services-head">
+    <p class="eyebrow">WHAT I OFFER</p>
+    <h3>Photography, web, apps, and 3D printing -- under one roof.</h3>
+    <p>Each service below has its own page with what's included and full pricing. Not sure which fits? Send a quick note and I'll point you the right way.</p>
+  </div>
+  <div class="about-services-grid">
+    <article class="about-service" *ngFor="let service of services">
+      <span class="about-service-icon" aria-hidden="true">{{ service.icon }}</span>
+      <p class="about-service-name">{{ service.name }}</p>
+      <h4>{{ service.title }}</h4>
+      <p class="about-service-text">{{ service.text }}</p>
+      <p class="about-service-price" *ngIf="startingPrice(service) as price">{{ price }}</p>
+      <button type="button" class="underlined" (click)="openService.emit(service.name)">See details &amp; pricing <span>→</span></button>
+    </article>
+  </div>
+  <div class="about-services-cta">
+    <button type="button" class="about-cta-primary" (click)="book.emit()">Book a session</button>
+    <button type="button" class="about-cta-secondary" (click)="contactClick.emit()">Start a project</button>
+  </div>
+</section>
+
 <section class="about-features" *ngIf="features.length">
   <h3 class="about-features-heading">Highlights</h3>
   <div class="about-features-grid">

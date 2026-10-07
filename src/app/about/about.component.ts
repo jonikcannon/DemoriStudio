@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, Input, Output, EventEmitter } from 
 import { CommonModule } from '@angular/common';
 import { mediaUrl } from '../media-url';
 import { SiteContent } from '../site-content';
+import { Service } from '../services/services.component';
 
 @Component({
   selector: 'app-about',
@@ -13,7 +14,11 @@ import { SiteContent } from '../site-content';
 })
 export class AboutComponent {
   @Input({ required: true }) content!: SiteContent['about'];
+  // The same services (and admin-edited prices) as the Services page.
+  @Input() services: Service[] = [];
   @Output() contactClick = new EventEmitter<void>();
+  @Output() openService = new EventEmitter<string>();
+  @Output() book = new EventEmitter<void>();
 
   // The bundled default until an admin uploads a portrait in the Site content form.
   private readonly defaultPortrait = mediaUrl('assets/gallery/about/portrait-in-the-green-hills.jpg');
@@ -37,6 +42,13 @@ export class AboutComponent {
   // Falls back to [] for content saved before this field existed.
   get features(): SiteContent['about']['features'] {
     return this.content.features || [];
+  }
+
+  // "From $75" from the first tier's "$75 - $150"; other wording as is.
+  startingPrice(service: Service): string {
+    const price = (service.tiers[0]?.price || '').trim();
+    const amount = price.match(/^\$[\d,]+(\.\d+)?/);
+    return amount ? `From ${amount[0]}` : price;
   }
 
   onLearnMoreClick() {
