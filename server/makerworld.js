@@ -114,14 +114,22 @@ async function fetchModel(id) {
   const snapshot = readSnapshot(id);
   if (snapshot) return snapshot;
 
+  // MakerWorld's bot check answers the first request on a fresh connection
+  // with a 403 challenge and lets the next one through, which made "Get info"
+  // need two clicks. Retrying here does that second request for the admin.
   let response;
-  try {
-    response = await fetch(`https://makerworld.com/api/v1/design-service/design/${id}`, {
-      headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
-      signal: AbortSignal.timeout(15000)
-    });
-  } catch {
-    throw new MakerWorldError('Could not reach MakerWorld. Use the "Send to Demori" bookmark on the model page instead.');
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      response = await fetch(`https://makerworld.com/api/v1/design-service/design/${id}`, {
+        headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+        signal: AbortSignal.timeout(15000)
+      });
+    } catch {
+      throw new MakerWorldError('Could not reach MakerWorld. Use the "Send to Demori" bookmark on the model page instead.');
+    }
+    if (response.status !== 403 || attempt === 3) break;
+    await response.arrayBuffer().catch(() => null);
+    await new Promise(resolve => setTimeout(resolve, 700));
   }
   if (response.status === 404) throw new MakerWorldError('That MakerWorld model was not found.');
   if (response.status === 403) throw new MakerWorldError('MakerWorld is blocking this server right now. Use the "Send to Demori" bookmark on the model page instead.');
