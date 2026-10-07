@@ -167,3 +167,4 @@ form input[type="checkbox"]{display:inline-block;width:auto;border:0;padding:0;m
 .admin-booking-tools .underlined,.admin-block-form .underlined{white-space:nowrap;justify-self:start}
 .admin-booking-tools .admin-unblock-day{display:flex;align-items:center;gap:8px;align-self:end;text-transform:none;letter-spacing:0;font-weight:400}
 .admin-booking-tools .admin-unblock-day input{width:auto;margin:0}
+.contact-form-section{padding:8px 8vw 92px}

@@ -111,7 +111,7 @@
 
   <app-about *ngIf="activeSection === 'about'" [content]="content.about" (contactClick)="openContact()"></app-about>
 
-  <section id="contact" class="contact" *ngIf="activeSection === 'booking'"><p class="eyebrow">{{ content.contact.eyebrow }}</p><h2>{{ content.contact.heading }}</h2><a [href]="'mailto:' + content.contact.email" class="contact-link">{{ content.contact.email }} <span>↗</span></a><app-contact-form [services]="serviceNames" [service]="contactService"></app-contact-form></section>
+  <section id="contact" class="contact-form-section" *ngIf="activeSection === 'booking'"><app-contact-form [services]="serviceNames" [service]="contactService"></app-contact-form></section>
 </main>
 
 <div class="cart-drawer-backdrop" *ngIf="isCartOpen" (click)="closeCartView()">
