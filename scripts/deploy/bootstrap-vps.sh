@@ -43,7 +43,9 @@ echo "==> Installing packages"
 apt-get update
 apt-get install -y -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef nginx certbot python3-certbot-nginx git curl build-essential ufw fail2ban rsync
 
-if ! command -v node >/dev/null 2>&1 || ! node -v | grep -q '^v20'; then
+# Accept any Node 20 or newer. Matching exactly v20 replaced a newer distro
+# Node (Ubuntu 26.04 ships 22) that other apps on the same box depend on.
+if [[ "$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)" -lt 20 ]]; then
   echo "==> Installing Node.js 20"
   curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
   apt-get install -y -o Dpkg::Options::=--force-confold nodejs
@@ -161,9 +163,13 @@ nginx -t
 systemctl reload nginx
 
 echo "==> Enabling UFW + fail2ban"
-ufw allow OpenSSH
-ufw allow 'Nginx Full'
-ufw --force enable
+# SKIP_FIREWALL=1 on a shared box whose other apps rely on ufw staying off
+# (e.g. a LAN-only admin UI); enabling it here would silently block them.
+if [[ "${SKIP_FIREWALL:-}" != "1" ]]; then
+  ufw allow OpenSSH
+  ufw allow 'Nginx Full'
+  ufw --force enable
+fi
 
 cat > /etc/fail2ban/jail.d/sshd.local <<'EOF'
 [sshd]

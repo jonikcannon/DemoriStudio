@@ -367,6 +367,72 @@ textarea {
   border-color: var(--color-primary);
 }
 
+.etsy-colors {
+  margin: 0 0 20px;
+}
+
+.etsy-colors-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.etsy-colors-label {
+  font-size: 10px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  font-weight: bold;
+}
+
+.etsy-colors-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.etsy-colors-actions button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.etsy-color-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.etsy-color-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #d8d2c3;
+  border-radius: 999px;
+  background: #fbfaf6;
+  padding: 4px 10px 4px 5px;
+  font-size: 11px;
+  color: #9a9c94;
+  cursor: pointer;
+}
+
+.etsy-color-chip i {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  opacity: 0.35;
+}
+
+.etsy-color-chip.etsy-color-on {
+  border-color: var(--color-primary);
+  background: #fff;
+  color: var(--color-text);
+}
+
+.etsy-color-chip.etsy-color-on i {
+  opacity: 1;
+}
+
 .etsy-checkbox {
   display: flex;
   align-items: baseline;

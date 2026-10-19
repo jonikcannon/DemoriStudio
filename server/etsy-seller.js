@@ -30,9 +30,19 @@ const MAX_IMAGES = 10;
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif'];
 
+// Etsy's standard "Primary color" property. Using it (rather than a custom
+// "Color" variation) is what lets buyers find the listing with Etsy's color
+// filter. The names are Etsy's own and identical in every category; each
+// category's property list supplies the value IDs and says whether colors can
+// be a variation there at all.
+const COLOR_PROPERTY_ID = 200;
+const COLORS = ['Beige', 'Black', 'Blue', 'Bronze', 'Brown', 'Clear', 'Copper', 'Gold', 'Gray', 'Green', 'Orange',
+  'Pink', 'Purple', 'Rainbow', 'Red', 'Rose gold', 'Silver', 'White', 'Yellow'];
+
 const pendingConnects = new Map(); // state -> { verifier, createdAt }
 let refreshInFlight = null;
 let taxonomy = null; // { nodes: Map<id, path>, fetchedAt }
+const colorProperties = new Map(); // taxonomy id -> { values: Map<name, valueId> | null, fetchedAt }
 
 class EtsyNotConnectedError extends Error {}
 // Bad form input, caught before anything is sent to Etsy.
@@ -198,8 +208,9 @@ async function sellerRequest(method, apiPath, body) {
   const settings = etsy.config();
   if (!settings) throw new Error('Etsy is not configured on the server.');
   const headers = { 'x-api-key': settings.apiKey, Authorization: `Bearer ${await accessToken()}`, Accept: 'application/json' };
-  // FormData sets its own multipart boundary header.
+  // FormData sets its own multipart boundary header; a string is JSON.
   if (body instanceof URLSearchParams) headers['Content-Type'] = 'application/x-www-form-urlencoded';
+  else if (typeof body === 'string') headers['Content-Type'] = 'application/json';
 
   const response = await fetch(`${etsy.API_BASE}${apiPath}`, { method, headers, body, signal: AbortSignal.timeout(60000) });
   const payload = await response.json().catch(() => ({}));
@@ -228,6 +239,27 @@ async function loadTaxonomy() {
   for (const root of (await response.json()).results || []) walk(root, []);
   taxonomy = { nodes, fetchedAt: Date.now() };
   return nodes;
+}
+
+// The category's "Primary color" values by name, or null when the category
+// doesn't offer colors as a variation.
+async function loadColorValues(taxonomyId) {
+  const cached = colorProperties.get(taxonomyId);
+  if (cached && Date.now() - cached.fetchedAt < TAXONOMY_TTL_MS) return cached.values;
+  const settings = etsy.config();
+  if (!settings) throw new Error('Etsy is not configured on the server.');
+  const response = await fetch(`${etsy.API_BASE}/seller-taxonomy/nodes/${taxonomyId}/properties`, {
+    headers: { 'x-api-key': settings.apiKey, Accept: 'application/json' },
+    signal: AbortSignal.timeout(15000)
+  });
+  if (!response.ok) throw new Error(`Etsy category properties returned ${response.status}.`);
+  const property = ((await response.json()).results || [])
+    .find(item => item.property_id === COLOR_PROPERTY_ID && item.supports_variations);
+  const values = property
+    ? new Map((property.possible_values || []).map(value => [value.name, value.value_id]))
+    : null;
+  colorProperties.set(taxonomyId, { values, fetchedAt: Date.now() });
+  return values;
 }
 
 async function searchCategories(query) {
@@ -277,7 +309,8 @@ async function options() {
         ? `${[policy.accepts_returns && 'Returns', policy.accepts_exchanges && 'exchanges'].filter(Boolean).join(' and ')} within ${policy.return_deadline} days`
         : 'No returns or exchanges'
     })),
-    usedCategories
+    usedCategories,
+    colors: COLORS
   };
 }
 
@@ -337,6 +370,20 @@ async function validateListing(input) {
   const taxonomyId = positiveInt(input?.taxonomyId, 'Category');
   if (!(await loadTaxonomy()).has(taxonomyId)) throw new ListingInputError('Choose a category from the list.');
 
+  // Each chosen color becomes an option buyers pick from; none means no variation.
+  const colorNames = [...new Set((Array.isArray(input?.colors) ? input.colors : []).map(String))];
+  const unknown = colorNames.find(name => !COLORS.includes(name));
+  if (unknown) throw new ListingInputError(`"${unknown}" isn't one of Etsy's colors.`);
+  let colors = [];
+  if (colorNames.length) {
+    const values = await loadColorValues(taxonomyId);
+    if (!values) throw new ListingInputError("Etsy doesn't allow color options in this category. Untick all colors or pick another category.");
+    colors = COLORS.filter(name => colorNames.includes(name) && values.has(name))
+      .map(name => ({ name, valueId: values.get(name) }));
+    const missing = colorNames.filter(name => !values.has(name));
+    if (missing.length) throw new ListingInputError(`This category doesn't offer ${missing.join(', ')}. Untick ${missing.length === 1 ? 'it' : 'them'} to continue.`);
+  }
+
   const images = Array.isArray(input?.images) ? input.images : [];
   if (!images.length) throw new ListingInputError('Add at least one photo.');
   if (images.length > MAX_IMAGES) throw new ListingInputError(`Etsy allows at most ${MAX_IMAGES} photos per listing.`);
@@ -386,8 +433,35 @@ async function validateListing(input) {
     tags: cleanList(input?.tags, { max: 13, maxLength: 20, pattern: /^[\p{L}\p{Nd}\p{Zs}\-'™©®]+$/u, field: 'tags' }),
     size: packageSize(input),
     materials: cleanList(input?.materials, { max: 13, maxLength: 45, pattern: /^[\p{L}\p{Nd}\p{Zs}]+$/u, field: 'materials' }),
+    colors,
     files,
     publish: input?.publish === true
+  };
+}
+
+// One product per color, all at the listing's price and quantity, so price
+// and quantity don't vary by color on Etsy.
+function colorInventory(listing) {
+  return {
+    products: listing.colors.map(color => ({
+      sku: '',
+      property_values: [{
+        property_id: COLOR_PROPERTY_ID,
+        property_name: 'Primary color',
+        value_ids: [color.valueId],
+        values: [color.name]
+      }],
+      offerings: [{
+        price: listing.price,
+        quantity: listing.quantity,
+        is_enabled: true,
+        readiness_state_id: listing.processingProfileId
+      }]
+    })),
+    price_on_property: [],
+    quantity_on_property: [],
+    sku_on_property: [],
+    readiness_state_on_property: []
   };
 }
 
@@ -429,6 +503,16 @@ async function createListing(input) {
 
   // The draft already exists on Etsy at this point, so later failures are
   // reported as warnings (with a link to finish it there) rather than errors.
+  let colorsFailed = false;
+  if (listing.colors.length) {
+    try {
+      await sellerRequest('PUT', `/listings/${listingId}/inventory`, JSON.stringify(colorInventory(listing)));
+    } catch (error) {
+      colorsFailed = true;
+      result.warnings.push(`Color options failed to save: ${error.message}`);
+    }
+  }
+
   let uploaded = 0;
   for (const [index, file] of listing.files.entries()) {
     const upload = new FormData();
@@ -445,6 +529,9 @@ async function createListing(input) {
   if (listing.publish) {
     if (!uploaded) {
       result.warnings.push('Not published: Etsy needs at least one photo before a listing can go live.');
+    } else if (colorsFailed) {
+      // Live without its color options, buyers couldn't say which color they want.
+      result.warnings.push('Not published: add the color options on Etsy, then publish it there.');
     } else {
       try {
         await sellerRequest('PATCH', `/shops/${shopId}/listings/${listingId}`, new URLSearchParams({ state: 'active' }));

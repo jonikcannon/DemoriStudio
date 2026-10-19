@@ -94,6 +94,22 @@
         <label>Materials <span class="etsy-optional">optional</span><input [(ngModel)]="listing.materials" name="materials" placeholder="PLA"></label>
       </div>
 
+      <div class="etsy-colors" role="group" aria-labelledby="etsy-colors-label">
+        <div class="etsy-colors-head">
+          <span id="etsy-colors-label" class="etsy-colors-label">Colors <span class="etsy-optional">{{ listing.colors.length ? listing.colors.length + ' of ' + options.colors.length + ' -- buyers choose one at checkout' : 'none -- no color choice on the listing' }}</span></span>
+          <span class="etsy-colors-actions">
+            <button type="button" class="etsy-link" (click)="setAllColors(true)" [disabled]="listing.colors.length === options.colors.length">All</button>
+            <button type="button" class="etsy-link" (click)="setAllColors(false)" [disabled]="!listing.colors.length">None</button>
+          </span>
+        </div>
+        <div class="etsy-color-chips">
+          <button type="button" *ngFor="let color of options.colors" class="etsy-color-chip" [class.etsy-color-on]="hasColor(color)"
+                  [attr.aria-pressed]="hasColor(color)" (click)="toggleColor(color)">
+            <i [style.background]="swatch(color)" aria-hidden="true"></i>{{ color }}
+          </button>
+        </div>
+      </div>
+
       <div class="etsy-three-up">
         <label>Shipping profile
           <select [(ngModel)]="listing.shippingProfileId" name="shippingProfileId" required>

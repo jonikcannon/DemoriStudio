@@ -35,6 +35,7 @@ type EtsyOptions = {
   processingProfiles: Option[];
   returnPolicies: Option[];
   usedCategories: Category[];
+  colors: string[];
 };
 // A local upload, or a photo imported from MakerWorld, which the server saved
 // to the print share on import and publishes from there.
@@ -64,6 +65,14 @@ const MAX_TOTAL_BYTES = 45 * 1024 * 1024;
 // Etsy's tag rules; MakerWorld tags that break them are dropped on import.
 const ETSY_TAG = /^[\p{L}\p{Nd}\p{Zs}\-'™©®]{1,20}$/u;
 const MAX_TAGS = 13;
+// Swatches for Etsy's color names; anything unlisted shows as plain text.
+const COLOR_SWATCHES: Record<string, string> = {
+  Beige: '#e8dcc0', Black: '#1d1d1d', Blue: '#2f6fd0', Bronze: '#a87436', Brown: '#7a4e2d',
+  Clear: 'repeating-conic-gradient(#ddd 0 25%, #fff 0 50%) 0 0 / 8px 8px', Copper: '#c06c3e', Gold: '#d4af37',
+  Gray: '#8c8c8c', Green: '#3b9a4b', Orange: '#f08a24', Pink: '#f19bbd', Purple: '#7b4bb3',
+  Rainbow: 'linear-gradient(135deg, #e53935, #fb8c00, #fdd835, #43a047, #1e88e5, #8e24aa)', Red: '#d32f2f',
+  'Rose gold': '#d9a294', Silver: 'linear-gradient(135deg, #f2f2f2, #a8a8a8)', White: '#ffffff', Yellow: '#f5d131'
+};
 
 // Admin "Etsy" tab: connects the Etsy shop once (OAuth, handled server-side in
 // etsy-seller.js), then creates listings in it -- drafts by default.
@@ -215,6 +224,8 @@ export class AdminEtsyComponent implements OnChanges, OnDestroy {
       shippingProfileId: null as number | null,
       processingProfileId: null as number | null,
       returnPolicyId: null as number | null,
+      // Every color Etsy offers, until the admin unticks the ones they don't print in.
+      colors: [...(this.options?.colors || [])],
       publish: false
     };
   }
@@ -263,6 +274,27 @@ export class AdminEtsyComponent implements OnChanges, OnDestroy {
     this.listing.shippingProfileId ??= options.shippingProfiles[0]?.id ?? null;
     this.listing.processingProfileId ??= options.processingProfiles[0]?.id ?? null;
     this.listing.returnPolicyId ??= options.returnPolicies[0]?.id ?? null;
+    if (!this.listing.colors.length) this.listing.colors = [...options.colors];
+  }
+
+  swatch(color: string): string {
+    return COLOR_SWATCHES[color] || 'transparent';
+  }
+
+  hasColor(color: string): boolean {
+    return this.listing.colors.includes(color);
+  }
+
+  // Kept in Etsy's order so the options read the same way on the listing.
+  toggleColor(color: string) {
+    const chosen = this.hasColor(color)
+      ? this.listing.colors.filter(name => name !== color)
+      : [...this.listing.colors, color];
+    this.listing.colors = (this.options?.colors || []).filter(name => chosen.includes(name));
+  }
+
+  setAllColors(on: boolean) {
+    this.listing.colors = on ? [...(this.options?.colors || [])] : [];
   }
 
   async connect() {
@@ -401,8 +433,8 @@ export class AdminEtsyComponent implements OnChanges, OnDestroy {
 
   // Keeps the shop-level choices (profiles, category) for the next item.
   private resetForm() {
-    const { shippingProfileId, processingProfileId, returnPolicyId, weightUnit, dimensionsUnit } = this.listing;
-    this.listing = { ...this.emptyListing(), shippingProfileId, processingProfileId, returnPolicyId, weightUnit, dimensionsUnit };
+    const { shippingProfileId, processingProfileId, returnPolicyId, weightUnit, dimensionsUnit, colors } = this.listing;
+    this.listing = { ...this.emptyListing(), shippingProfileId, processingProfileId, returnPolicyId, weightUnit, dimensionsUnit, colors };
     this.releasePhotos(this.photos);
     this.photos = [];
     this.imported = null;
