@@ -213,10 +213,16 @@ async function sellerRequest(method, apiPath, body) {
   else if (typeof body === 'string') headers['Content-Type'] = 'application/json';
 
   const response = await fetch(`${etsy.API_BASE}${apiPath}`, { method, headers, body, signal: AbortSignal.timeout(60000) });
-  const payload = await response.json().catch(() => ({}));
+  const text = await response.text().catch(() => '');
+  let payload = {};
+  try { payload = JSON.parse(text); } catch {}
   if (!response.ok) {
     if (response.status === 401) throw new EtsyNotConnectedError('Etsy rejected the saved connection. Click "Connect Etsy" to reconnect.');
-    throw new EtsyApiError(payload.error || `Etsy returned ${response.status}.`, response.status);
+    // Etsy usually says why in "error", but not always; fall back to its raw
+    // body so the reason is never lost behind a bare status code.
+    const reason = payload.error || payload.error_description || payload.message || text.trim().slice(0, 300);
+    console.error(`Etsy ${method} ${apiPath} returned ${response.status}: ${text.slice(0, 1000)}`);
+    throw new EtsyApiError(reason ? `Etsy returned ${response.status}: ${reason}` : `Etsy returned ${response.status}.`, response.status);
   }
   return payload;
 }
