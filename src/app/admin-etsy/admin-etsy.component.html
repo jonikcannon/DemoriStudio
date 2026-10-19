@@ -95,13 +95,12 @@
       </div>
 
       <div class="etsy-colors" role="group" aria-labelledby="etsy-colors-label">
-        <div class="etsy-colors-head">
-          <span id="etsy-colors-label" class="etsy-colors-label">Colors <span class="etsy-optional">{{ listing.colors.length ? listing.colors.length + ' of ' + options.colors.length + ' -- buyers choose one at checkout' : 'none -- no color choice on the listing' }}</span></span>
-          <span class="etsy-colors-actions">
-            <button type="button" class="etsy-link" (click)="setAllColors(true)" [disabled]="listing.colors.length === options.colors.length">All</button>
-            <button type="button" class="etsy-link" (click)="setAllColors(false)" [disabled]="!listing.colors.length">None</button>
-          </span>
-        </div>
+        <span id="etsy-colors-label" class="etsy-colors-label">Colors <span class="etsy-optional">{{ listing.colors.length ? listing.colors.length + ' of ' + options.colors.length + ' -- buyers choose one at checkout' : 'none -- no color choice on the listing' }}</span></span>
+        <label class="etsy-checkbox etsy-all-colors">
+          <input type="checkbox" name="allColors" [checked]="allColorsSelected" [indeterminate]="listing.colors.length > 0 && !allColorsSelected"
+                 (change)="setAllColors($any($event.target).checked)">
+          <span><b>All colors</b> <span class="etsy-optional">{{ options.colors.join(', ') }}</span></span>
+        </label>
         <div class="etsy-color-chips">
           <button type="button" *ngFor="let color of options.colors" class="etsy-color-chip" [class.etsy-color-on]="hasColor(color)"
                   [attr.aria-pressed]="hasColor(color)" (click)="toggleColor(color)">

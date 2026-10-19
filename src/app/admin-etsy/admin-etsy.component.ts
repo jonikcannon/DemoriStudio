@@ -293,6 +293,10 @@ export class AdminEtsyComponent implements OnChanges, OnDestroy {
     this.listing.colors = (this.options?.colors || []).filter(name => chosen.includes(name));
   }
 
+  get allColorsSelected(): boolean {
+    return Boolean(this.options?.colors.length) && this.listing.colors.length === this.options!.colors.length;
+  }
+
   setAllColors(on: boolean) {
     this.listing.colors = on ? [...(this.options?.colors || [])] : [];
   }

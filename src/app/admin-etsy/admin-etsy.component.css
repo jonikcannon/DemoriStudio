@@ -371,29 +371,19 @@ textarea {
   margin: 0 0 20px;
 }
 
-.etsy-colors-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 8px;
-}
-
 .etsy-colors-label {
+  display: block;
+  margin-bottom: 8px;
   font-size: 10px;
   letter-spacing: 0.13em;
   text-transform: uppercase;
   font-weight: bold;
 }
 
-.etsy-colors-actions {
-  display: flex;
-  gap: 12px;
-}
-
-.etsy-colors-actions button:disabled {
-  opacity: 0.4;
-  cursor: default;
+.etsy-all-colors {
+  flex-wrap: nowrap;
+  margin: 0 0 10px;
+  line-height: 1.5;
 }
 
 .etsy-color-chips {
