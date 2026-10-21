@@ -1091,6 +1091,16 @@ app.get('/api/admin/etsy/categories', auth, async (req, res) => {
   }
 });
 
+// Best-guess categories for an imported item; the first is preselected.
+app.post('/api/admin/etsy/categories/guess', auth, async (req, res) => {
+  try {
+    const { title, categories, tags } = req.body || {};
+    res.json({ categories: await etsySeller.guessCategories({ title, categories, tags }) });
+  } catch (error) {
+    sendEtsyError(res, error);
+  }
+});
+
 // Reads a MakerWorld model page to prefill the Etsy listing form.
 app.get('/api/admin/makerworld/import', auth, async (req, res) => {
   try {

@@ -280,6 +280,63 @@ async function searchCategories(query) {
   return matches;
 }
 
+const GUESS_STOPWORDS = new Set(['a', 'an', 'and', 'the', 'with', 'for', 'of', 'to', 'in', 'on', 'or', 'by', 'from', 'your', 'my',
+  'other', 'print', 'printed', 'printing', '3d', 'stl', 'model', 'models', 'file', 'files', 'free', 'diy', 'easy', 'support', 'supports',
+  'no', 'need', 'needed', 'v1', 'v2', 'v3', 'new', 'mini', 'small', 'large', 'big', 'set', 'pack', 'kit', 'custom', 'design', 'version']);
+
+// "Holders" and "holder" should match, as should "boxes" and "box".
+function stem(word) {
+  if (word.length > 4 && word.endsWith('ies')) return `${word.slice(0, -3)}y`;
+  if (word.length > 4 && /(ches|shes|xes|sses)$/.test(word)) return word.slice(0, -2);
+  if (word.length > 3 && word.endsWith('s') && !word.endsWith('ss')) return word.slice(0, -1);
+  return word;
+}
+
+function guessWords(text) {
+  return String(text || '').toLowerCase().split(/[^\p{L}\p{Nd}]+/u)
+    .filter(word => word.length > 1 && !GUESS_STOPWORDS.has(word) && !/^\d+$/.test(word))
+    .map(stem);
+}
+
+// Best Etsy categories for an item from its title, MakerWorld categories and
+// tags. A word in the category's own name counts more than one in its parents,
+// the title counts more than tags, and categories the shop already lists in get
+// a nudge -- so the guess is usually right, and always just a starting point.
+async function guessCategories({ title, categories, tags } = {}) {
+  const weighted = new Map();
+  const add = (text, weight) => {
+    for (const word of guessWords(text)) weighted.set(word, Math.max(weighted.get(word) || 0, weight));
+  };
+  // "Cotton Swab Dispenser with Lid" is a dispenser: what follows "with" is a
+  // feature, not the item.
+  const [item, ...features] = String(title || '').split(/\s+(?:with|w\/|including|plus|\+)\s+/i);
+  add(features.join(' '), 1);
+  add(item, 3);
+  for (const category of [].concat(categories || [])) add(category, 2);
+  for (const tag of [].concat(tags || []).slice(0, 13)) add(tag, 1);
+  if (!weighted.size) return [];
+
+  const [nodes, counts] = await Promise.all([loadTaxonomy(), etsy.getCategoryCounts().catch(() => ({}))]);
+  const scored = [];
+  for (const [id, pathName] of nodes) {
+    const segments = pathName.split(' > ');
+    const leaf = new Set(guessWords(segments[segments.length - 1]));
+    const parents = new Set(guessWords(segments.slice(0, -1).join(' ')));
+    let score = 0;
+    let leafHits = 0;
+    for (const [word, weight] of weighted) {
+      if (leaf.has(word)) { score += weight * 2; leafHits++; } else if (parents.has(word)) score += weight;
+    }
+    // A match only in the parents ("Home & Living") says too little to guess from.
+    if (!leafHits) continue;
+    // Favour leaves fully explained by the item over long names that share one word.
+    score += (leafHits / leaf.size) * 2 + segments.length * 0.1;
+    if (counts[id]) score += 1.5;
+    scored.push({ id, path: pathName, score });
+  }
+  return scored.sort((a, b) => b.score - a.score).slice(0, 5).map(({ id, path: categoryPath }) => ({ id, path: categoryPath }));
+}
+
 async function options() {
   const { id } = await etsy.getShop();
   const [shipping, processing, returns, nodes, counts] = await Promise.all([
@@ -552,5 +609,5 @@ async function createListing(input) {
 }
 
 module.exports = {
-  EtsyNotConnectedError, ListingInputError, EtsyApiError, status, startConnect, finishConnect, disconnect, options, searchCategories, createListing
+  EtsyNotConnectedError, ListingInputError, EtsyApiError, status, startConnect, finishConnect, disconnect, options, searchCategories, guessCategories, createListing
 };

@@ -103,6 +103,10 @@ export class AdminEtsyComponent implements OnChanges, OnDestroy {
   categoryQuery = '';
   categoryResults: Category[] = [];
   selectedCategory: Category | null = null;
+  // Categories guessed from an imported item; the top one is preselected and
+  // the rest are offered one click away.
+  categoryGuesses: Category[] = [];
+  categoryGuessed = false;
   private categoryTimer?: ReturnType<typeof setTimeout>;
   submitting = false;
   created: CreatedListing | null = null;
@@ -180,12 +184,7 @@ export class AdminEtsyComponent implements OnChanges, OnDestroy {
       const room = Math.max(0, MAX_PHOTOS - ownPhotos.length);
       this.photos = [...model.images.slice(0, room).map(image => ({ remoteUrl: image, preview: image })), ...ownPhotos];
 
-      // Seed the category search; Etsy's taxonomy differs from MakerWorld's,
-      // so the admin still picks the exact category from the results.
-      if (!this.selectedCategory) {
-        const seed = model.categories.find(name => name.trim().length >= 2);
-        if (seed) this.onCategoryInput(seed.split('&')[0].trim());
-      }
+      await this.guessCategory(model);
     } catch (error) {
       this.error = error instanceof Error ? error.message : 'Could not import from MakerWorld.';
     }
@@ -193,11 +192,37 @@ export class AdminEtsyComponent implements OnChanges, OnDestroy {
     this.refresh();
   }
 
+  // Preselects the best-matching Etsy category for the item; Etsy's taxonomy
+  // differs from MakerWorld's, so it stays a guess the admin can change. With
+  // no confident guess, falls back to seeding the search box.
+  private async guessCategory(model: MakerWorldModel) {
+    let guesses: Category[] = [];
+    try {
+      ({ categories: guesses } = await this.request<{ categories: Category[] }>('/admin/etsy/categories/guess', {
+        method: 'POST',
+        body: JSON.stringify({ title: model.title, categories: model.categories, tags: model.tags })
+      }));
+    } catch {
+      // A failed guess just means choosing by hand.
+    }
+    if (guesses.length) {
+      this.chooseCategory(guesses[0]);
+      this.categoryGuesses = guesses;
+      this.categoryGuessed = true;
+      return;
+    }
+    this.categoryGuesses = [];
+    const seed = model.categories.find(name => name.trim().length >= 2);
+    if (seed) this.onCategoryInput(seed.split('&')[0].trim());
+  }
+
   clearImport() {
     if (!this.imported) return;
     this.photos = this.photos.filter(photo => photo.file);
     this.imported = null;
     this.makerworldUrl = '';
+    this.categoryGuesses = [];
+    this.categoryGuessed = false;
   }
 
   // \\server\prints\<title>\photos, from the share's inbox path when it's set.
@@ -330,6 +355,7 @@ export class AdminEtsyComponent implements OnChanges, OnDestroy {
   onCategoryInput(query: string) {
     this.categoryQuery = query;
     this.selectedCategory = null;
+    this.categoryGuessed = false;
     clearTimeout(this.categoryTimer);
     if (query.trim().length < 2) {
       this.categoryResults = [];
@@ -351,6 +377,12 @@ export class AdminEtsyComponent implements OnChanges, OnDestroy {
     this.selectedCategory = category;
     this.categoryQuery = category.path;
     this.categoryResults = [];
+    this.categoryGuessed = false;
+  }
+
+  // The other guesses, shown as one-click alternatives to the chosen one.
+  get otherGuesses(): Category[] {
+    return this.categoryGuesses.filter(category => category.id !== this.selectedCategory?.id);
   }
 
   pickPhotos(event: Event) {
@@ -435,8 +467,14 @@ export class AdminEtsyComponent implements OnChanges, OnDestroy {
     this.refresh();
   }
 
-  // Keeps the shop-level choices (profiles, category) for the next item.
+  // Keeps the shop-level choices (profiles, colors) for the next item; the
+  // category is per item, so it starts empty again.
   private resetForm() {
+    this.selectedCategory = null;
+    this.categoryQuery = '';
+    this.categoryResults = [];
+    this.categoryGuesses = [];
+    this.categoryGuessed = false;
     const { shippingProfileId, processingProfileId, returnPolicyId, weightUnit, dimensionsUnit, colors } = this.listing;
     this.listing = { ...this.emptyListing(), shippingProfileId, processingProfileId, returnPolicyId, weightUnit, dimensionsUnit, colors };
     this.releasePhotos(this.photos);

@@ -78,13 +78,17 @@
         <label>Quantity<input [(ngModel)]="listing.quantity" name="quantity" type="number" min="1" max="999" step="1" required></label>
       </div>
 
-      <label class="etsy-category">Category
+      <label class="etsy-category">Category <span class="etsy-optional" *ngIf="categoryGuessed">guessed from the item -- search to change it</span>
         <input [ngModel]="categoryQuery" (ngModelChange)="onCategoryInput($event)" name="category" autocomplete="off" placeholder="Search, e.g. wall mount, planter, desk organizer">
         <ul class="etsy-category-results" *ngIf="categoryResults.length">
           <li *ngFor="let category of categoryResults"><button type="button" (click)="chooseCategory(category)">{{ category.path }}</button></li>
         </ul>
       </label>
-      <div class="etsy-chips" *ngIf="options.usedCategories.length && !selectedCategory">
+      <div class="etsy-chips" *ngIf="otherGuesses.length">
+        <span>{{ selectedCategory ? 'Other guesses:' : 'Guesses:' }}</span>
+        <button type="button" *ngFor="let category of otherGuesses" (click)="chooseCategory(category)" [title]="category.path">{{ category.path.split(' > ').slice(-2).join(' › ') }}</button>
+      </div>
+      <div class="etsy-chips" *ngIf="options.usedCategories.length && !selectedCategory && !otherGuesses.length">
         <span>Used in your shop:</span>
         <button type="button" *ngFor="let category of options.usedCategories.slice(0, 8)" (click)="chooseCategory(category)" [title]="category.path">{{ category.path.split(' > ').pop() }}</button>
       </div>
