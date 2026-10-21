@@ -282,6 +282,35 @@
   background: #e8e3d7;
 }
 
+/* Aerial clips are stacked and crossfaded: the next clip stays transparent
+   until its first frame is ready, then fades in over the one still playing. */
+.aerial-stage {
+  position: relative;
+  height: clamp(280px, 42vw, 560px);
+  overflow: hidden;
+  border: 1px solid #cdc8bd;
+  background: #e8e3d7;
+}
+
+.service-media .aerial-stage video {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  border: 0;
+  opacity: 0;
+  transition: opacity 0.7s ease;
+}
+
+.service-media .aerial-stage video.aerial-ready {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .service-media .aerial-stage video {
+    transition: none;
+  }
+}
+
 .service-media-placeholder {
   height: clamp(280px, 42vw, 560px);
   box-sizing: border-box;
@@ -378,7 +407,8 @@
 
   .service-media img,
   .service-media video,
-  .service-media-placeholder {
+  .service-media-placeholder,
+  .aerial-stage {
     height: 320px;
   }
 
@@ -408,7 +438,8 @@
 
   .service-media img,
   .service-media video,
-  .service-media-placeholder {
+  .service-media-placeholder,
+  .aerial-stage {
     height: 240px;
   }
 

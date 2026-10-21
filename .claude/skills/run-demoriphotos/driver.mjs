@@ -291,6 +291,64 @@ const commands = {
     };
   },
 
+  // Services > Aerial crossfade: the clip on screen must stay fully visible
+  // until the next one has faded in over it, so sampling the stage after a
+  // click should never find a moment with no opaque <video> (the old blank
+  // flash), and never more than two stacked clips.
+  async aerial(s) {
+    await s.send('Page.navigate', { url: APP });
+    await sleep(6000);
+    const opened = await s.eval(`
+      (() => {
+        const el = [...document.querySelectorAll('nav a, a, button')].find(e => e.textContent.trim() === 'Services');
+        if (!el) return 'NO SERVICES LINK';
+        el.click();
+        return 'ok';
+      })()
+    `);
+    if (opened !== 'ok') throw new Error(opened);
+    await sleep(8000);
+    const stage = `document.querySelector('.aerial-stage')`;
+    const sample = `(() => {
+      const st = ${stage};
+      if (!st) return null;
+      const vids = [...st.querySelectorAll('video')];
+      const opaque = vids.filter(v => getComputedStyle(v).opacity === '1');
+      const top = vids[vids.length - 1];
+      return { count: vids.length, opaque: opaque.length, topSrc: (top.currentSrc || top.src).split('/').pop(), counter: document.querySelector('.service-media-cycle p')?.textContent.trim() };
+    })()`;
+    const before = await s.eval(sample);
+    if (!before) throw new Error('no .aerial-stage on the Services page');
+    // Polls inside the page so the 40 ms samples aren't stretched by CDP round trips.
+    const watch = (ms) => s.eval(`new Promise(done => {
+      const out = []; const end = Date.now() + ${ms};
+      const tick = () => { out.push(${sample}); if (Date.now() < end) setTimeout(tick, 40); else done(out); };
+      tick();
+    })`);
+    const click = (label) => s.eval(`document.querySelector('.service-media-nav[aria-label="${label}"]').click()`);
+
+    await click('Next aerial video');
+    const single = await watch(6000);
+    const afterOne = single[single.length - 1];
+    await s.shot('aerial-next');
+
+    for (let i = 0; i < 4; i++) { await click('Next aerial video'); await sleep(120); }
+    const rapid = await watch(6000);
+    const afterRapid = rapid[rapid.length - 1];
+    const all = [...single, ...rapid];
+    return {
+      before,
+      afterOneClick: afterOne,
+      afterFourRapidClicks: afterRapid,
+      framesWithNoVisibleClip: all.filter(f => f.opaque === 0).length,
+      maxStackedVideos: Math.max(...all.map(f => f.count)),
+      samples: all.length,
+      screenshot: await s.shot('aerial'),
+      consoleErrors: s.consoleErrors,
+      failedRequests: s.failed
+    };
+  },
+
   // No browser needed: HEAD every manifest entry. This is what catches a
   // rename that moved the file but not the reference.
   async urls() {

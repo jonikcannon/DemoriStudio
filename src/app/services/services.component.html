@@ -90,7 +90,13 @@
           <span class="service-media-placeholder-icon" aria-hidden="true">{{ service.icon }}</span>
           <span>{{ service.title }}</span>
         </div>
-        <video *ngIf="service.mediaType === 'video'" [src]="getServiceMediaSource(service)" [poster]="service.poster || null" autoplay muted loop playsinline preload="metadata" [attr.aria-label]="service.title"></video>
+        <div class="aerial-stage" *ngIf="showsAerialStage(service)">
+          <video *ngFor="let layer of aerialLayers; let first = first; trackBy: trackAerialLayer" [class.aerial-ready]="layer.ready"
+                 [src]="layer.src" [poster]="(first && service.poster) || null" autoplay muted loop playsinline preload="auto"
+                 (loadeddata)="onAerialLayerReady(layer)" (error)="onAerialLayerReady(layer)"
+                 [attr.aria-label]="service.title + ', video ' + getAerialVideoPosition() + ' of ' + getAerialVideoTotal()"></video>
+        </div>
+        <video *ngIf="service.mediaType === 'video' && !showsAerialStage(service)" [src]="getServiceMediaSource(service)" [poster]="service.poster || null" autoplay muted loop playsinline preload="metadata" [attr.aria-label]="service.title"></video>
         <div class="service-media-cycle" *ngIf="canCycleAerialVideos(service)">
           <button type="button" class="service-media-nav" (click)="showPreviousAerialVideo()" aria-label="Previous aerial video">‹</button>
           <p>{{ getAerialVideoPosition() }} / {{ getAerialVideoTotal() }}</p>

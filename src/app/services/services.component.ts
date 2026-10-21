@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, Input, Output, EventEmitter, OnChanges, SimpleChanges, HostListener } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, Input, Output, EventEmitter, OnChanges, OnDestroy, SimpleChanges, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { getApiBaseUrl, mediaUrl } from '../media-url';
@@ -46,6 +46,13 @@ export type EtsyListing = {
 // time it's opened, and the listings only change when the shop does.
 let etsyListingsRequest: Promise<EtsyListing[]> | null = null;
 
+// One stacked <video> in the aerial crossfade. A new clip stays transparent
+// until its first frame has loaded, so the previous clip keeps playing behind
+// it instead of the panel flashing empty while the next one downloads.
+type AerialLayer = { key: number; src: string; ready: boolean };
+// Matches the opacity transition in services.component.css.
+const AERIAL_FADE_MS = 700;
+
 @Component({
   selector: 'app-services',
   standalone: true,
@@ -54,7 +61,7 @@ let etsyListingsRequest: Promise<EtsyListing[]> | null = null;
   templateUrl: './services.component.html',
   styleUrl: './services.component.css'
 })
-export class ServicesComponent implements OnChanges {
+export class ServicesComponent implements OnChanges, OnDestroy {
   @Input() services: Service[] = [];
   @Input() activeService = 'Aerial';
   @Input() aerialVideos: string[] = [];
@@ -64,6 +71,9 @@ export class ServicesComponent implements OnChanges {
   @Output() contactClick = new EventEmitter<string>();
   private readonly api = getApiBaseUrl();
   private aerialVideoIndex = 0;
+  aerialLayers: AerialLayer[] = [];
+  private aerialLayerKey = 0;
+  private aerialFadeTimer?: ReturnType<typeof setTimeout>;
 
   // One site at a time, paged like the Aerial videos (‹ N/M ›).
   showcaseSites: ShowcaseSite[] = [];
@@ -77,11 +87,19 @@ export class ServicesComponent implements OnChanges {
     if (changes['services'] && this.services.some(service => service.etsyListings)) this.loadEtsyListings();
     if (changes['websites']) this.buildShowcaseSites();
     if (!changes['aerialVideos']) return;
+    clearTimeout(this.aerialFadeTimer);
     if (!this.aerialVideos.length) {
       this.aerialVideoIndex = 0;
+      this.aerialLayers = [];
       return;
     }
     this.aerialVideoIndex %= this.aerialVideos.length;
+    // The first clip shows straight away (with its poster) rather than fading in.
+    this.aerialLayers = [{ key: ++this.aerialLayerKey, src: this.aerialVideos[this.aerialVideoIndex], ready: true }];
+  }
+
+  ngOnDestroy() {
+    clearTimeout(this.aerialFadeTimer);
   }
 
   // Shown as screenshot cards linking out, not live iframes: most sites
@@ -158,12 +176,46 @@ export class ServicesComponent implements OnChanges {
 
   showPreviousAerialVideo() {
     if (this.aerialVideos.length < 2) return;
-    this.aerialVideoIndex = (this.aerialVideoIndex - 1 + this.aerialVideos.length) % this.aerialVideos.length;
+    this.showAerialVideo((this.aerialVideoIndex - 1 + this.aerialVideos.length) % this.aerialVideos.length);
   }
 
   showNextAerialVideo() {
     if (this.aerialVideos.length < 2) return;
-    this.aerialVideoIndex = (this.aerialVideoIndex + 1) % this.aerialVideos.length;
+    this.showAerialVideo((this.aerialVideoIndex + 1) % this.aerialVideos.length);
+  }
+
+  // Stacks the new clip on top of whatever is on screen now. Clips skipped
+  // past by clicking quickly are dropped before they finish loading, so only
+  // the visible clip and the one being faded in are ever downloading.
+  private showAerialVideo(index: number) {
+    this.aerialVideoIndex = index;
+    clearTimeout(this.aerialFadeTimer);
+    const onScreen = [...this.aerialLayers].reverse().find(layer => layer.ready);
+    this.aerialLayers = [
+      ...(onScreen ? [onScreen] : []),
+      { key: ++this.aerialLayerKey, src: this.aerialVideos[index], ready: false }
+    ];
+  }
+
+  // Fired once the new clip has a frame to show (or failed to load, so a bad
+  // file can't leave the old clip stuck on screen). Fades it in, then removes
+  // the clips underneath once they're fully covered.
+  onAerialLayerReady(layer: AerialLayer) {
+    if (layer.ready || !this.aerialLayers.includes(layer)) return;
+    this.aerialLayers = this.aerialLayers.map(item => item === layer ? { ...item, ready: true } : item);
+    clearTimeout(this.aerialFadeTimer);
+    this.aerialFadeTimer = setTimeout(() => {
+      this.aerialLayers = this.aerialLayers.filter(item => item.key >= layer.key);
+      this.changeDetector.markForCheck();
+    }, AERIAL_FADE_MS);
+  }
+
+  trackAerialLayer(_: number, layer: AerialLayer) {
+    return layer.key;
+  }
+
+  showsAerialStage(service: Service): boolean {
+    return service.name === 'Aerial' && service.mediaType === 'video' && this.aerialLayers.length > 0;
   }
 
   @HostListener('document:keydown', ['$event'])
